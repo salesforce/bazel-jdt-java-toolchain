@@ -1,14 +1,4 @@
-load("@rules_java//java:defs.bzl", "java_binary", "java_library")
-
-# ===================================================================================================
-# This builder works by forking some classes from the VanillaJavaBuilder in Bazel
-#
-java_binary(
-    name = "JdtJavaBuilder",
-    main_class = "com.salesforce.bazel.jdt.toolchain.builder.JdtJavaBuilder",
-    visibility = ["//visibility:public"],
-    runtime_deps = [":jdt_java_builder_lib"],
-)
+load("@rules_java//java:defs.bzl", "java_library")
 
 java_library(
     name = "jdt_java_builder_lib",
@@ -25,4 +15,5 @@ java_library(
         "@maven//:com_google_guava_guava",
         "//builder/third_party/ecj",
     ],
+    visibility = ["//visibility:public"],
 )

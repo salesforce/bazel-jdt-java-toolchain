@@ -1,10 +1,10 @@
-package(default_visibility = ["//visibility:public"])
-
 load(
     "@bazel_tools//tools/jdk:default_java_toolchain.bzl",
     "DEFAULT_JAVACOPTS",
     "default_java_toolchain",
 )
+
+package(default_visibility = ["//visibility:public"])
 
 default_java_toolchain(
     name = "jdt_java_toolchain",

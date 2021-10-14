@@ -42,7 +42,7 @@ derive_targets_from_directories: false
 
 targets:
   # If source code isn't resolving, add additional targets that compile it here
-  //builder/src/main/java:JdtJavaBuilder_deploy.jar
+  //:JdtJavaBuilder_deploy.jar
   # Exclude test/example targets because they exist in a different WORKSPACE
   -//builder/src/test:all
 
@@ -65,10 +65,9 @@ used to facilitate the steps.
 ```
 #!/bin/bash
 
-bazel build //builder/src/main/java:JdtJavaBuilder_deploy.jar && echo "Deploy Jar built"
-rm -f builder/export/JdtJavaBuilder_deploy.jar
-cp bazel-out/k8-fastbuild/bin/builder/src/main/java/JdtJavaBuilder_deploy.jar builder/export && echo "Deploy jar copied into repository"
-chmod +w builder/export/JdtJavaBuilder_deploy.jar
+bazel build JdtJavaBuilder_deploy.jar && echo "Deploy Jar built"
+cp -f bazel-bin/JdtJavaBuilder_deploy.jar builder/export && echo "Deploy jar copied into repository"
+git add --force builder/export/JdtJavaBuilder_deploy.jar
 ```
 
 Unfortunately, due to issues with circular dependencies (a client that wants to use this builder, and

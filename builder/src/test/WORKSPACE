@@ -1,0 +1,22 @@
+workspace(name = "simple_example")
+
+load("@bazel_tools//tools/build_defs/repo:jvm.bzl", "jvm_maven_import_external")
+# Load git_repository
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
+
+maven_servers = ["http://localhost:8099/maven/central"]
+
+jvm_maven_import_external(
+    name = "com_fasterxml_jackson_datatype_guava",
+    artifact = "com.fasterxml.jackson.datatype:jackson-datatype-guava:2.10.3",
+    artifact_sha256 = "49b76a72f426e71b1b73324d261f87b493bba08b8c968bb893a01e42df7d9296",
+    licenses = ["notice"],
+    server_urls = maven_servers,
+)
+
+git_repository(
+    name = "jdt_java_toolchain",
+    remote = "git@git.soma.salesforce.com:bazel/jdt-java-toolchain.git",
+    branch = "master",
+)
+

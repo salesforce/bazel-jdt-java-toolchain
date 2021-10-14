@@ -1,0 +1,12 @@
+# Easy switching back to Vanilla for comparison
+#build --host_java_toolchain=@bazel_tools//tools/jdk:toolchain_vanilla
+#build --java_toolchain=@bazel_tools//tools/jdk:toolchain_vanilla
+
+build --host_java_toolchain=@jdt_java_toolchain//builder/toolchain_def:jdt_java_toolchain
+build --java_toolchain=@jdt_java_toolchain//builder/toolchain_def:jdt_java_toolchain
+
+# Currently does not work with persistent workers
+build --strategy=Javac=local
+
+# allow developers to tune the build with local overrides
+try-import %workspace%/.bazelrc-local

@@ -38,9 +38,9 @@ jobs:
       run: |
         "${GITHUB_WORKSPACE}/bin/bazel" build :JdtJavaBuilder_deploy.jar
 
-    - name: Test
+    - name: Test Compile
       run: |
         cp -f bazel-bin/JdtJavaBuilder_deploy.jar builder/export/
         cd builder/src/test/
-        "${GITHUB_WORKSPACE}/bin/bazel" test //...
+        "${GITHUB_WORKSPACE}/bin/bazel" build //...
 

@@ -38,13 +38,6 @@ jobs:
       run: |
         "${GITHUB_WORKSPACE}/bin/bazel" build :JdtJavaBuilder_deploy.jar
 
-    - name: Ensure JdtJavaBuilder_deploy.jar is current
-      uses: GuillaumeFalourd/diff-action@v1
-      with:
-        first_file_path: builder/export/JdtJavaBuilder_deploy.jar
-        second_file_path: bazel-bin/JdtJavaBuilder_deploy.jar
-        expected_result: PASSED
-
     - name: Test
       run: |
         cp -f bazel-bin/JdtJavaBuilder_deploy.jar builder/export/

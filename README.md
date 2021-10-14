@@ -3,6 +3,23 @@ A Java Toolchain for Bazel that uses JDT for compilation.
 
 This project depends on the [bazel-maven-proxy](https://github.com/salesforce/bazel-maven-proxy)
 
+## Usage
+Add this to your `WORKSPACE` file:
+```
+git_repository(
+    name = "bazel_jdt_java_toolchain",
+    remote = "git@github.com:salesforce/bazel-jdt-java-toolchain.git",
+    commit = "506fafbe19a9f97f90f673bc00c0a02f8d63aa5d"
+)
+```
+
+Add this to your `.bazelrc`:
+```
+build --host_java_toolchain=@jdt_java_toolchain//builder/toolchain_def:jdt_java_toolchain
+build --java_toolchain=@jdt_java_toolchain//builder/toolchain_def:jdt_java_toolchain
+```
+
+
 ## IntelliJ project
 For best results when importing the project into IntelliJ as a Bazel project,
 add the following entries into the .ijwb/.bazelproject file:
@@ -32,6 +49,7 @@ targets:
 java_language_level: 11
 ```
 
+
 ## Current Limitations
 Currently, there are some issues with clients that try to access use this toolchain
 by compiling the builder from source. Many of the Bazel macros depend on the current
@@ -55,6 +73,7 @@ chmod +w builder/export/JdtJavaBuilder_deploy.jar
 
 Unfortunately, due to issues with circular dependencies (a client that wants to use this builder, and
 tried to build the builder from source)
+
 
 ## Debugging
 For debugging the toolchain's Java code (including ECJ compiler) here are a few notes:

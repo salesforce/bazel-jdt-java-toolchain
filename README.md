@@ -7,7 +7,7 @@ This project depends on the [bazel-maven-proxy](https://github.com/salesforce/ba
 Add this to your `WORKSPACE` file:
 ```
 git_repository(
-    name = "bazel_jdt_java_toolchain",
+    name = "jdt_java_toolchain",
     remote = "git@github.com:salesforce/bazel-jdt-java-toolchain.git",
     commit = "506fafbe19a9f97f90f673bc00c0a02f8d63aa5d"
 )

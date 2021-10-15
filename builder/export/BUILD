@@ -1,5 +1,14 @@
+package(default_visibility = ["//visibility:public"])
+
+licenses(["notice"])
+
 filegroup(
     name = "JdtJavaToolchainRef",
     srcs = ["JdtJavaBuilder_deploy.jar"],
-    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "srcs",
+    srcs = glob(["**"]),
+    visibility = ["@//:__pkg__"],
 )

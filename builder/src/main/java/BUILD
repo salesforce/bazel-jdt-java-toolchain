@@ -12,7 +12,7 @@ java_library(
         "//builder/src/main/protobuf:deps_java_proto",
         "//builder/src/main/protobuf:java_compilation_java_proto",
         "//builder/src/main/protobuf:worker_protocol_java_proto",
-        "@maven//:com_google_guava_guava",
+        "@rules_jdt_guava",
         "//builder/third_party/ecj",
     ],
     visibility = ["//visibility:public"],

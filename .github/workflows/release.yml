@@ -1,13 +1,7 @@
-name: CI
+name: Release
 
 on:
-  # Triggers the workflow on push or pull request events but only for the main branch
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-
-  # Allows you to run this workflow manually from the Actions tab
+  # only manual from the Actions tab
   workflow_dispatch:
 
 jobs:
@@ -37,9 +31,29 @@ jobs:
       run: |
         "${GITHUB_WORKSPACE}/bin/bazel" build :JdtJavaBuilder_deploy.jar
 
-    - name: Test Compile
+    - name: Copy JdtJavaBuilder_deploy.jar
       run: |
         cp -f bazel-bin/JdtJavaBuilder_deploy.jar builder/export/
+
+    - name: Test Compile
+      run: |
         cd builder/src/test/
         "${GITHUB_WORKSPACE}/bin/bazel" build //...
 
+    - name: Build Distribution
+      run: |
+        "${GITHUB_WORKSPACE}/bin/bazel" build //dist:rules_jdt
+        "${GITHUB_WORKSPACE}/bin/bazel" build //dist:relnotes
+
+    - name: Publish Release
+      uses: "marvinpinto/action-automatic-releases@latest"
+      with:
+        repo_token: "${{ secrets.GITHUB_TOKEN }}"
+        automatic_release_tag: "latest"
+        prerelease: true
+        title: "Development Build"
+        files: |
+          LICENSE
+          bazel-bin/dist/rules_jdt.tar.gz
+          bazel-bin/dist/changelog.txt
+          bazel-bin/dist/relnotes.txt

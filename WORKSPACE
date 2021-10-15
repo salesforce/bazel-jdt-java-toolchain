@@ -1,4 +1,4 @@
-workspace(name = "jdt_java_toolchain_ws")
+workspace(name = "rules_jdt")
 
 # --------------------------------------------------------------------------
 # Load http_archive
@@ -13,9 +13,7 @@ http_archive(
         "https://mirror.bazel.build/github.com/bazelbuild/bazel-skylib/releases/download/1.0.3/bazel-skylib-1.0.3.tar.gz",
     ],
 )
-
 load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
-
 bazel_skylib_workspace()
 
 # --------------------------------------------------------------------------
@@ -29,44 +27,36 @@ http_archive(
         "https://github.com/bazelbuild/rules_proto/archive/218ffa7dfa5408492dc86c01ee637614f8695c45.tar.gz",
     ],
 )
-
 load("@rules_proto//proto:repositories.bzl", "rules_proto_dependencies", "rules_proto_toolchains")
-
 rules_proto_dependencies()
+rules_proto_toolchains()
 
+# --------------------------------------------------------------------------
+# rules_pkg dused to produce the release artifacts.
+http_archive(
+    name = "rules_pkg",
+    urls = [
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_pkg/releases/download/0.5.1/rules_pkg-0.5.1.tar.gz",
+        "https://github.com/bazelbuild/rules_pkg/releases/download/0.5.1/rules_pkg-0.5.1.tar.gz",
+    ],
+    sha256 = "a89e203d3cf264e564fcb96b6e06dd70bc0557356eb48400ce4b5d97c2c3720d",
+)
+load("@rules_pkg//:deps.bzl", "rules_pkg_dependencies")
+rules_pkg_dependencies()
+
+# Needed for making our release notes
+load("@rules_pkg//toolchains/git:git_configure.bzl", "experimental_find_system_git")
+experimental_find_system_git(
+    name = "rules_jdt_git",
+    workspace_file = "//:WORKSPACE",
+    verbose = True,
+)
 
 # --------------------------------------------------------------------------
 # Maven Dependencies
+load("//jdt:repositories.bzl", "rules_jdt_dependencies")
+rules_jdt_dependencies()
 
-RULES_JVM_EXTERNAL_TAG = "3.0"
-RULES_JVM_EXTERNAL_SHA = "62133c125bf4109dfd9d2af64830208356ce4ef8b165a6ef15bbff7460b35c3a"
-http_archive(
-    name = "rules_jvm_external",
-    strip_prefix = "rules_jvm_external-%s" % RULES_JVM_EXTERNAL_TAG,
-    sha256 = RULES_JVM_EXTERNAL_SHA,
-    url = "https://github.com/bazelbuild/rules_jvm_external/archive/%s.zip" % RULES_JVM_EXTERNAL_TAG,
-)
-load("@rules_jvm_external//:defs.bzl", "maven_install")
+# note: use rules_jvm_external and maven_install below for test-only dependencies
 
-maven_install(
-    name = "maven",
-    artifacts = [
-		"com.google.guava:guava:30.1-jre",
-    ],
-    repositories = [
-	    "https://repo1.maven.org/maven2",
-	    "https://jcenter.bintray.com/",
-	    "https://maven.google.com",
-    ],
 
-    # pin artifacts
-    # NOTE: always run 'bazel run @unpinned_maven//:pin' to refresh the json file when you updated artifacts or repositories
-    maven_install_json = "//:maven_install.json",
-
-    # don't make transitives visible by default
-    strict_visibility = True,
-)
-
-# load the pinned Maven artifacts
-load("@maven//:defs.bzl", "pinned_maven_install")
-pinned_maven_install()

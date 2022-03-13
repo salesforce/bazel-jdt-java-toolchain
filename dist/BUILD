@@ -17,7 +17,7 @@ pkg_tar(
     strip_prefix = ".",
 )
 
-# this currently fails because of https://github.com/bazelbuild/rules_pkg/issues/435
+# Generates release notes template
 print_rel_notes(
     name = "relnotes",
     outs = ["relnotes.txt"],
@@ -31,7 +31,8 @@ print_rel_notes(
     version = "latest",
 )
 
-# this currently fails because of https://github.com/bazelbuild/rules_pkg/issues/437
+# Builds a Git changelog
+# NOTE: a replacement may be available with https://github.com/softprops/action-gh-release and GitHub's automatic release notes generator
 git_changelog(
     name = "changelog",
     out = "changelog.txt",

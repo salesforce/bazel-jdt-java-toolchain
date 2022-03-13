@@ -1,0 +1,64 @@
+name: Tagged Release
+
+on:
+  # only when a semver tag is pushed
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Mount bazel cache
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cache/bazel
+          ~/.cache/bazelisk
+        key: bazel
+
+    - name: Install bazelisk
+      run: |
+        curl -LO "https://github.com/bazelbuild/bazelisk/releases/download/v1.10.1/bazelisk-linux-amd64"
+        mkdir -p "${GITHUB_WORKSPACE}/bin/"
+        mv bazelisk-linux-amd64 "${GITHUB_WORKSPACE}/bin/bazel"
+        chmod +x "${GITHUB_WORKSPACE}/bin/bazel"
+
+    - name: Build
+      run: |
+        "${GITHUB_WORKSPACE}/bin/bazel" build :JdtJavaBuilder_deploy.jar
+
+    - name: Copy JdtJavaBuilder_deploy.jar
+      run: |
+        cp -f bazel-bin/JdtJavaBuilder_deploy.jar builder/export/
+
+    - name: Test Compile
+      run: |
+        cd builder/src/test/
+        "${GITHUB_WORKSPACE}/bin/bazel" build //...
+
+    - name: Build Distribution
+      run: |
+        "${GITHUB_WORKSPACE}/bin/bazel" build //dist:rules_jdt
+        "${GITHUB_WORKSPACE}/bin/bazel" build //dist:relnotes
+
+    - name: Replace version with tag info
+      # more inspiration at https://blog.pusher.com/continuous-releases-github-actions/
+      run: |
+        sed -i "s|/latest/|/${{ github.ref_name }}/|" bazel-bin/dist/relnotes.txt
+
+    - name: Publish Release
+      uses: "softprops/action-gh-release@latest"
+      with:
+        token: "${{ secrets.GITHUB_TOKEN }}"
+        draft: true
+        body_path: "bazel-bin/dist/relnotes.txt"
+        files: |
+          LICENSE
+          bazel-bin/dist/rules_jdt.tar.gz
+          bazel-bin/dist/changelog.txt

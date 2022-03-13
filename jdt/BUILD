@@ -3,8 +3,16 @@ load(
     "DEFAULT_JAVACOPTS",
     "default_java_toolchain",
 )
-
+   
 package(default_visibility = ["//visibility:public"])
+
+licenses(["notice"])
+
+filegroup(
+    name = "srcs",
+    srcs = glob(["**"]),
+    visibility = ["@//:__pkg__"],
+)
 
 default_java_toolchain(
     name = "jdt_java_toolchain",
@@ -14,6 +22,6 @@ default_java_toolchain(
     misc = DEFAULT_JAVACOPTS + [
         "-XSFmax_stdouterr_bytes=6000000",
     ],
-    source_version = "",
-    target_version = "",
+    source_version = "11",
+    target_version = "11",
 )

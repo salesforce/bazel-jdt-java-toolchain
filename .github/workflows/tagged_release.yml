@@ -53,7 +53,7 @@ jobs:
         sed -i "s|/latest/|/${{ github.ref_name }}/|" bazel-bin/dist/relnotes.txt
 
     - name: Publish Release
-      uses: "softprops/action-gh-release@latest"
+      uses: "softprops/action-gh-release@v1"
       with:
         token: "${{ secrets.GITHUB_TOKEN }}"
         draft: true

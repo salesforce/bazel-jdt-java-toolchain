@@ -1,6 +1,6 @@
 load("@rules_pkg//:pkg.bzl", "pkg_tar")
-load("@rules_pkg//releasing:defs.bzl", "print_rel_notes")
-load("@rules_pkg//releasing:git.bzl", "git_changelog")
+load("@rules_pkg//pkg/releasing:defs.bzl", "print_rel_notes")
+load("@rules_pkg//pkg/releasing:git.bzl", "git_changelog")
 
 package(
     default_visibility = ["//visibility:private"],
@@ -27,7 +27,7 @@ print_rel_notes(
     repo = "bazel-jdt-java-toolchain",
     setup_file = "jdt:repositories.bzl",
     toolchains_method = "rules_jdt_toolchains",
-    tarball_name = "rules_jdt.tar.gz",
+    artifact_name = "rules_jdt.tar.gz",
     version = "latest",
 )
 

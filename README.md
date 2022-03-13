@@ -1,7 +1,6 @@
 # jdt-java-toolchain
 A Java Toolchain for Bazel that uses JDT for compilation.
 
-This project depends on the [bazel-maven-proxy](https://github.com/salesforce/bazel-maven-proxy)
 
 ## Usage
 

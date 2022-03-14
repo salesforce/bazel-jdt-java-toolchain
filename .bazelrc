@@ -1,8 +1,5 @@
 # JDK 11
 build --java_language_version=11
 
-# force Python 3 on GitHub
-build --host_force_python=PY3
-
 # create a .bazelrc-local to customize further
 try-import %workspace%/.bazelrc-local

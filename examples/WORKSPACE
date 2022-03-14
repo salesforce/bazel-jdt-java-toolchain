@@ -1,0 +1,9 @@
+workspace(name = "examples")
+
+local_repository(
+    name = "bazel_jdt_java_toolchain",
+    path = "../",
+)
+load("@bazel_jdt_java_toolchain//jdt:repositories.bzl", "rules_jdt_dependencies", "rules_jdt_toolchains")
+rules_jdt_dependencies()
+rules_jdt_toolchains()

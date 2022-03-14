@@ -39,7 +39,7 @@ jobs:
 
     - name: Test Compile
       run: |
-        cp -f bazel-bin/JdtJavaBuilder_deploy.jar builder/export/
-        cd builder/src/test/
+        cp -f bazel-bin/JdtJavaBuilder_deploy.jar compiler/export/
+        cd examples/
         "${GITHUB_WORKSPACE}/bin/bazel" build //...
 

@@ -9,7 +9,7 @@ filegroup(
     srcs = [
         "BUILD",
         "LICENSE",
-        "//builder/export:srcs",
+        "//compiler/export:srcs",
         "//jdt:srcs",
     ],
     visibility = ["@//dist:__pkg__"],
@@ -18,7 +18,7 @@ filegroup(
 java_binary(
     name = "JdtJavaBuilder",
     main_class = "com.salesforce.bazel.jdt.toolchain.builder.JdtJavaBuilder",
-    runtime_deps = ["//builder/src/main/java:jdt_java_builder_lib"],
+    runtime_deps = ["//compiler:jdt_java_builder_lib"],
 )
 
 exports_files(

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <projectDescription>
-	<name>jdt-java-toolchain</name>
+	<name>Bazel Workspace (jdt-java-toolchain)</name>
 	<comment></comment>
 	<projects>
 	</projects>
@@ -12,17 +12,74 @@
 		</buildCommand>
 	</buildSpec>
 	<natures>
+		<nature>com.salesforce.bazel.eclipse.bazelNature</nature>
 		<nature>org.eclipse.jdt.core.javanature</nature>
 	</natures>
-	<filteredResources>
-		<filter>
-			<id>1634209038367</id>
-			<name></name>
-			<type>30</type>
-			<matcher>
-				<id>org.eclipse.core.resources.regexFilterMatcher</id>
-				<arguments>node_modules|.git|__CREATED_BY_JAVA_LANGUAGE_SERVER__</arguments>
-			</matcher>
-		</filter>
-	</filteredResources>
+	<linkedResources>
+		<link>
+			<name>.DS_Store</name>
+			<type>1</type>
+			<location>/Users/gwagenknecht/Development/salesforce/bazel/jdt-java-toolchain/.DS_Store</location>
+		</link>
+		<link>
+			<name>.bazelignore</name>
+			<type>1</type>
+			<location>/Users/gwagenknecht/Development/salesforce/bazel/jdt-java-toolchain/.bazelignore</location>
+		</link>
+		<link>
+			<name>.bazelrc</name>
+			<type>1</type>
+			<location>/Users/gwagenknecht/Development/salesforce/bazel/jdt-java-toolchain/.bazelrc</location>
+		</link>
+		<link>
+			<name>.classpath</name>
+			<type>1</type>
+			<location>/Users/gwagenknecht/Development/salesforce/bazel/jdt-java-toolchain/.classpath</location>
+		</link>
+		<link>
+			<name>.gitignore</name>
+			<type>1</type>
+			<location>/Users/gwagenknecht/Development/salesforce/bazel/jdt-java-toolchain/.gitignore</location>
+		</link>
+		<link>
+			<name>.project</name>
+			<type>1</type>
+			<location>/Users/gwagenknecht/Development/salesforce/bazel/jdt-java-toolchain/.project</location>
+		</link>
+		<link>
+			<name>BUILD</name>
+			<type>1</type>
+			<location>/Users/gwagenknecht/Development/salesforce/bazel/jdt-java-toolchain/BUILD</location>
+		</link>
+		<link>
+			<name>CODEOWNERS</name>
+			<type>1</type>
+			<location>/Users/gwagenknecht/Development/salesforce/bazel/jdt-java-toolchain/CODEOWNERS</location>
+		</link>
+		<link>
+			<name>CODE_OF_CONDUCT.md</name>
+			<type>1</type>
+			<location>/Users/gwagenknecht/Development/salesforce/bazel/jdt-java-toolchain/CODE_OF_CONDUCT.md</location>
+		</link>
+		<link>
+			<name>LICENSE</name>
+			<type>1</type>
+			<location>/Users/gwagenknecht/Development/salesforce/bazel/jdt-java-toolchain/LICENSE</location>
+		</link>
+		<link>
+			<name>NOTICE</name>
+			<type>1</type>
+			<location>/Users/gwagenknecht/Development/salesforce/bazel/jdt-java-toolchain/NOTICE</location>
+		</link>
+		<link>
+			<name>README.md</name>
+			<type>1</type>
+			<location>/Users/gwagenknecht/Development/salesforce/bazel/jdt-java-toolchain/README.md</location>
+		</link>
+		<link>
+			<name>WORKSPACE</name>
+			<type>1</type>
+			<location>/Users/gwagenknecht/Development/salesforce/bazel/jdt-java-toolchain/WORKSPACE</location>
+		</link>
+	</linkedResources>
 </projectDescription>

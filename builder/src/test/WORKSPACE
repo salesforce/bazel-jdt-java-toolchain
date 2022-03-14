@@ -1,6 +1,0 @@
-workspace(name = "simple_example")
-local_repository(
-    name = "jdt_java_toolchain",
-    path = "../../..",
-)
-

@@ -3,7 +3,7 @@ package(default_visibility = ["//visibility:public"])
 licenses(["notice"])
 
 filegroup(
-    name = "JdtJavaToolchainRef",
+    name = "JdtJavaBuilder",
     srcs = ["JdtJavaBuilder_deploy.jar"],
 )
 

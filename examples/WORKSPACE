@@ -7,3 +7,6 @@ local_repository(
 load("@bazel_jdt_java_toolchain//jdt:repositories.bzl", "rules_jdt_dependencies", "rules_jdt_toolchains")
 rules_jdt_dependencies()
 rules_jdt_toolchains()
+
+
+

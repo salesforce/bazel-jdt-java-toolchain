@@ -1,7 +1,6 @@
 load(
-    "@bazel_tools//tools/jdk:default_java_toolchain.bzl",
-    "DEFAULT_JAVACOPTS",
-    "default_java_toolchain",
+  "@bazel_tools//tools/jdk:default_java_toolchain.bzl",
+  "default_java_toolchain", "DEFAULT_TOOLCHAIN_CONFIGURATION"
 )
    
 package(default_visibility = ["//visibility:public"])
@@ -14,14 +13,28 @@ filegroup(
     visibility = ["@//:__pkg__"],
 )
 
-default_java_toolchain(
-    name = "jdt_java_toolchain",
-    forcibly_disable_header_compilation = True,
-    javabuilder = ["//builder/export:JdtJavaToolchainRef"],
-    jvm_opts = [],
-    misc = DEFAULT_JAVACOPTS + [
-        "-XSFmax_stdouterr_bytes=6000000",
-    ],
-    source_version = "11",
-    target_version = "11",
-)
+RELEASES = (8, 9, 10, 11)
+[
+    default_java_toolchain(
+        name = "jdt_toolchain_java%d" % release,
+        configuration = DEFAULT_TOOLCHAIN_CONFIGURATION,
+        javabuilder = ["//compiler/export:JdtJavaBuilder"],
+        java_runtime = "@local_jdk//:jdk",
+        source_version = "%s" % release,
+        target_version = "%s" % release,
+    )
+    for release in RELEASES
+]
+
+RELEASES_EMPTY_CONFIG = (15, 17)
+[
+    default_java_toolchain(
+        name = "jdt_toolchain_java%d" % release,
+        configuration = dict(),
+        javabuilder = ["//compiler/export:JdtJavaBuilder"],
+        java_runtime = "@local_jdk//:jdk",
+        source_version = "%s" % release,
+        target_version = "%s" % release,
+    )
+    for release in RELEASES_EMPTY_CONFIG
+]

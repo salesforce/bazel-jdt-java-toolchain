@@ -35,7 +35,7 @@ jobs:
 
     - name: Copy JdtJavaBuilder_deploy.jar
       run: |
-        cp -f bazel-bin/JdtJavaBuilder_deploy.jar compiler/export/
+        cp -fv bazel-bin/JdtJavaBuilder_deploy.jar compiler/export/
 
     - name: Test Compile
       run: |

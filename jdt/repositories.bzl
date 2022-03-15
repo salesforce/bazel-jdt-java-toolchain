@@ -14,8 +14,8 @@ def rules_jdt_dependencies(repositories = _DEFAULT_REPOSITORIES):
     """
     jvm_maven_import_external(
         name = "rules_jdt_guava",
-        artifact = "com.google.guava:guava:30.1-jre",
-        artifact_sha256 = "e6dd072f9d3fe02a4600688380bd422bdac184caf6fe2418cfdd0934f09432aa",
+        artifact = "com.google.guava:guava:31.0.1-jre",
+        artifact_sha256 = "d5be94d65e87bd219fb3193ad1517baa55a3b88fc91d21cf735826ab5af087b9",
         licenses = ["notice"],
         server_urls = _DEFAULT_REPOSITORIES,
     )

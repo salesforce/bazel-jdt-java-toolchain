@@ -18,6 +18,8 @@ RELEASES = (8, 9, 10, 11)
     default_java_toolchain(
         name = "jdt_toolchain_java%d" % release,
         configuration = DEFAULT_TOOLCHAIN_CONFIGURATION,
+        header_compiler = ["//compiler/tools:TurbineDirect"],
+        header_compiler_direct = ["//compiler/tools:TurbineDirect"],
         javabuilder = ["//compiler/export:JdtJavaBuilder"],
         java_runtime = "@local_jdk//:jdk",
         source_version = "%s" % release,
@@ -31,6 +33,8 @@ RELEASES_EMPTY_CONFIG = (15, 17)
     default_java_toolchain(
         name = "jdt_toolchain_java%d" % release,
         configuration = dict(),
+        header_compiler = ["//compiler/tools:TurbineDirect"],
+        header_compiler_direct = ["//compiler/tools:TurbineDirect"],
         javabuilder = ["//compiler/export:JdtJavaBuilder"],
         java_runtime = "@local_jdk//:jdk",
         source_version = "%s" % release,

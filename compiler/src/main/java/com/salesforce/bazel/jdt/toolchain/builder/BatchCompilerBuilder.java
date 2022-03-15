@@ -24,16 +24,20 @@ import java.util.Map;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.io.MoreFiles;
+import com.google.devtools.build.buildjar.javac.JavacOptions;
+import com.google.devtools.build.buildjar.javac.JavacOptions.FilteredJavacopts;
+import com.google.devtools.build.buildjar.javac.JavacOptions.ReleaseOptionNormalizer;
 import com.google.devtools.build.buildjar.proto.JavaCompilation;
 import com.google.devtools.build.lib.view.proto.Deps;
 import com.salesforce.bazel.jdt.toolchain.builder.jarhelper.JarCreator;
+
 
 /**
  * JDT's Batch Compiler
  */
 public class BatchCompilerBuilder implements AutoCloseable {
-	
-	   
+
+
     /** Warning text when the output from the JDT compile is too long. */
     private static final String CONTENT_TOO_LONG_WARNING = "\nWARNING: Output from JdtJavaBuilder was too long - truncated\n";
     // Default value comes from com.google.devtools.build.lib.runtime.UiEventHandler::getContentIfSmallEnough
@@ -113,47 +117,6 @@ public class BatchCompilerBuilder implements AutoCloseable {
         jar.execute();
     }
 
-    /**
-     * Returns an immutable list containing all the non-Bazel specific Javac flags.
-     * Filters a list of javac flags excluding Bazel-specific flags.
-     * Also defaults java source and target versions to 11 as JDT defaults it to 1.5, if not specified.
-     */
-    public static ImmutableList<String> removeBazelSpecificFlags(Iterable<String> javacopts) {
-        ImmutableList.Builder<String> standardJavacopts = ImmutableList.builder();
-        boolean hasJavaSourceOption = false;
-        boolean hasJavaTargetOption = false;
-        boolean hasJavaReleaseOption = false;
-
-        for (String opt : javacopts) {
-            if (!isBazelSpecificFlag(opt)) {
-                if (opt.equalsIgnoreCase("-source")) {
-                    hasJavaSourceOption = true;
-                } else if (opt.equalsIgnoreCase("-target")) {
-                    hasJavaTargetOption = true;
-                } else if (opt.equalsIgnoreCase("--release")) {
-                    hasJavaReleaseOption = true;
-                }
-                standardJavacopts.add(opt);
-            }
-        }
-
-        if (!hasJavaReleaseOption) {
-            if (!hasJavaTargetOption) {
-                standardJavacopts.add("-target");
-                standardJavacopts.add("11");
-                if (!hasJavaSourceOption) {
-                    standardJavacopts.add("-source");
-                    standardJavacopts.add("11");
-                }
-            }
-        }
-        return standardJavacopts.build();
-    }
-
-    private static boolean isBazelSpecificFlag(String opt) {
-        return opt.startsWith("-Werror:") || opt.startsWith("-Xep");
-    }
-
     private FileSystem getJarFileSystem(Path sourceJar) throws IOException {
         FileSystem fs = filesystems.get(sourceJar);
         if (fs == null) {
@@ -165,7 +128,7 @@ public class BatchCompilerBuilder implements AutoCloseable {
     @Override
     public void close() throws IOException {}
 
-    
+
     public JdtJavaBuilderResult run(List<String> args) throws IOException {
         SimpleOptionsParser optionsParser;
         try {
@@ -199,8 +162,12 @@ public class BatchCompilerBuilder implements AutoCloseable {
             org.eclipse.jdt.core.compiler.CompilationProgress progress = null; // instantiate your subclass
             StringBuilder commandLineBuilder = new StringBuilder();
 
+            // filter out duplicate and normalize 'source', 'target' and 'release' values
+            List<String> normalizedJavacOpts = JavacOptions.normalizeOptionsWithNormalizers(optionsParser.getJavacOpts(),  new ReleaseOptionNormalizer());
+
             // Use javac options from Bazel config, and remove Bazel specific flags.
-            for (String javacOpt : removeBazelSpecificFlags(optionsParser.getJavacOpts())) {
+            FilteredJavacopts filtered = JavacOptions.filterJavacopts(normalizedJavacOpts);
+            for (String javacOpt : filtered.standardJavacopts()) {
                 commandLineBuilder.append(javacOpt);
                 commandLineBuilder.append(" ");
             }

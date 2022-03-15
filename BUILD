@@ -10,7 +10,7 @@ filegroup(
         "BUILD",
         "LICENSE",
         "//compiler/export:srcs",
-        "//compiler/third_party/turbine:srcs",
+        "//compiler/tools:srcs",
         "//jdt:srcs",
     ],
     visibility = ["@//dist:__pkg__"],

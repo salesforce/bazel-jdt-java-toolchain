@@ -1,9 +1,5 @@
-load("@rules_java//java:defs.bzl", "java_import")
-
 java_import(
-    name = "ecj",
-    jars = [
-        "ecj-head.jar"
-    ],
+    name = "javax17api",
+    jars = ["javax17api.jar"],
     visibility = ["//visibility:public"],
 )

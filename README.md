@@ -18,34 +18,9 @@ Please create your own `default_java_toolchain` if this doesn't work for your us
 Have a look at `jdt/BUILD` to see which JDKs are supported.
 
 
-## IntelliJ project
-For best results when importing the project into IntelliJ as a Bazel project,
-add the following entries into the .ijwb/.bazelproject file:
+# JDT Notes
 
-```
-directories:
-  # Add the directories you want added as source here. By default, includes entire workspace ('.')
-  .
-  -bazel-bin
-  -bazel-jdt-java-toolchain
-  -bazel-out
-  -bazel-testlogs
-  -builder/src/test/bazel-bin
-  -builder/src/test/bazel-out
-  -builder/src/test/bazel-test
-  -builder/src/test/bazel-testlogs
-
-# Do not automatically includes all relevant targets under the 'directories' above
-derive_targets_from_directories: false
-
-targets:
-  # If source code isn't resolving, add additional targets that compile it here
-  //:JdtJavaBuilder_deploy.jar
-  # Exclude test/example targets because they exist in a different WORKSPACE
-  -//builder/src/test:all
-
-java_language_level: 11
-```
+Read [ECJ README](compiler/src/main/ecj/README.md) for details about updating JDT.
 
 
 ## Current Limitations
@@ -54,22 +29,23 @@ by compiling the builder from source. Many of the Bazel macros depend on the cur
 java toolchain, and because that toolchain has not been built yet, we run into a circular
 dependency.
 
-The temporary solution is for jdt-java-toolchain developers to build the toolchain and then
-check in the deploy jar into the repository. Clients can then use the git_repository macro
-and point directly at the binary jar as the builder.
+The solution is for `bazel-jdt-java-toolchain` developers to build the toolchain and then
+copy the deploy jar into the repository. Clients can then use the `override_repository` command
+and point directly at the source of this repo for development and testing.
 
 Unfortunately this means additional steps are required for developers. This script can be
 used to facilitate the steps.
 ```
 #!/bin/bash
 
-bazel build JdtJavaBuilder_deploy.jar && echo "Deploy Jar built"
-cp -f bazel-bin/JdtJavaBuilder_deploy.jar builder/export && echo "Deploy jar copied into repository"
-git add --force builder/export/JdtJavaBuilder_deploy.jar
+bazel build :JdtJavaBuilder_deploy.jar
+cp -fv bazel-bin/JdtJavaBuilder_deploy.jar compiler/export/
+
+bazel build //compiler/third_party/turbine:turbine_direct_binary_deploy.jar 
+cp -fv bazel-bin/compiler/third_party/turbine/turbine_direct_binary_deploy.jar compiler/tools/
 ```
 
-Unfortunately, due to issues with circular dependencies (a client that wants to use this builder, and
-tried to build the builder from source)
+For your convinience, the `build-toolchain` script is provided in this repository.
 
 
 ## Debugging

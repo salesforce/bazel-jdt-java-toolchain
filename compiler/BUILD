@@ -6,12 +6,12 @@ java_library(
     deps = [
         ":work_request_handlers",
         ":buildjar",
+        ":ecj",
         "//compiler/src/main/protobuf:deps_java_proto",
         "//compiler/src/main/protobuf:java_compilation_java_proto",
         "//compiler/src/main/protobuf:worker_protocol_java_proto",
         "@com_google_protobuf//:protobuf_java",
         "@rules_jdt_guava",
-        "//compiler/third_party/ecj",
     ],
     visibility = ["//visibility:public"],
 )
@@ -36,4 +36,15 @@ java_library(
         "//compiler/third_party/auto_value:processor",
         "@rules_jdt_guava",
     ],
+)
+
+
+# Eclipse Java Compiler
+java_library(
+    name = "ecj",
+    srcs = glob(["src/main/ecj/**/*.java"]),
+    resources = glob(["src/main/ecj/**"], exclude = ["**/*.java"]),
+    resource_strip_prefix = "compiler/src/main/ecj/",
+    javacopts = ["-nowarn", "-XepDisableAllChecks"],
+    deps = ["//compiler/third_party/ecj:javax17api"],
 )

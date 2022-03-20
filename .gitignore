@@ -7,6 +7,10 @@ bazel-*
 # but not the bazel sha256 signatures
 !bazel-*.sha256
 
+# Eclipse metadata
+.project
+.settings/
+.classpath
 
 # output folders
 bin/

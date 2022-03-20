@@ -65,7 +65,8 @@ public class ReducedClasspathJavaLibraryBuilder extends SimpleJavaLibraryBuilder
         return BlazeJavacResult.fallback();
       }
       if (build.reduceClasspathMode() == ReduceClasspathMode.JAVABUILDER_REDUCED) {
-        result = fallback(build, javacRunner);
+        // FIXME: [ECJ does not support StrictJavaDepsPlugin]
+    	result = fallback(build, javacRunner);
       }
     }
 

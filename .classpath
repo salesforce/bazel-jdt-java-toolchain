@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<classpath>
-	<classpathentry kind="con" path="com.salesforce.bazel.eclipse.BAZEL_GLOBAL_SEARCH_CONTAINER"/>
-	<classpathentry kind="output" path="bin"/>
-</classpath>

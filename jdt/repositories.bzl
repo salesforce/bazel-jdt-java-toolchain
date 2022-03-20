@@ -36,6 +36,30 @@ def rules_jdt_dependencies(repositories = _DEFAULT_REPOSITORIES):
         server_urls = _DEFAULT_REPOSITORIES,
     )
 
+    jvm_maven_import_external(
+        name = "rules_jdt_jsr305",
+        artifact = "com.google.code.findbugs:jsr305:3.0.2",
+        artifact_sha256 = "766ad2a0783f2687962c8ad74ceecc38a28b9f72a2d085ee438b7813e928d0c7",
+        licenses = ["notice"],
+        server_urls = _DEFAULT_REPOSITORIES,
+    )
+
+    jvm_maven_import_external(
+        name = "rules_jdt_caffeine",
+        artifact = "com.github.ben-manes.caffeine:caffeine:3.0.5",
+        artifact_sha256 = "8a9b54d3506a3b92ee46b217bcee79196b21ca6d52dc2967c686a205fb2f9c15",
+        licenses = ["notice"],
+        server_urls = _DEFAULT_REPOSITORIES,
+    )
+
+    jvm_maven_import_external(
+        name = "rules_jdt_jacoco_core",
+        artifact = "org.jacoco:org.jacoco.core:0.8.7",
+        artifact_sha256 = "ad7739b5fb5969aa1a8aead3d74ed54dc82ed012f1f10f336bd1b96e71c1a13c",
+        licenses = ["notice"],
+        server_urls = _DEFAULT_REPOSITORIES,
+    )
+    
 def rules_jdt_toolchains():
     """An utility method to load all Java toolchains.
 

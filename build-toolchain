@@ -1,0 +1,8 @@
+#!/bin/bash
+set -euo pipefail
+
+bazel build //:JdtJavaBuilder_deploy.jar
+cp -fv bazel-bin/JdtJavaBuilder_deploy.jar compiler/export/
+
+bazel build //compiler/third_party/turbine:turbine_direct_binary_deploy.jar 
+cp -fv bazel-bin/compiler/third_party/turbine/turbine_direct_binary_deploy.jar compiler/tools/

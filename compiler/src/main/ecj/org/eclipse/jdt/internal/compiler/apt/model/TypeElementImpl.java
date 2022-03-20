@@ -29,7 +29,7 @@ import javax.lang.model.element.Modifier;
 import javax.lang.model.element.Name;
 import javax.lang.model.element.NestingKind;
 import javax.lang.model.element.PackageElement;
-import javax.lang.model.element.RecordComponentElement;
+//import javax.lang.model.element.RecordComponentElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.element.TypeParameterElement;
 import javax.lang.model.element.VariableElement;
@@ -86,7 +86,7 @@ public class TypeElementImpl extends ElementImpl implements TypeElement {
 				case INTERFACE :
 				case CLASS :
 				case ENUM :
-				case RECORD :
+				//case RECORD :
 					TypeElementImpl typeElementImpl = (TypeElementImpl) e;
 					Binding typeBinding = typeElementImpl._binding;
 					if (typeBinding instanceof SourceTypeBinding) {
@@ -106,7 +106,7 @@ public class TypeElementImpl extends ElementImpl implements TypeElement {
 					break;
 				case ENUM_CONSTANT :
 				case FIELD :
-				case RECORD_COMPONENT :
+				//case RECORD_COMPONENT :
 					VariableElementImpl variableElementImpl = (VariableElementImpl) e;
 					binding = variableElementImpl._binding;
 					if (binding instanceof FieldBinding) {
@@ -164,13 +164,14 @@ public class TypeElementImpl extends ElementImpl implements TypeElement {
 				 enclosed.add(variable);
 			}
 		}
-		if (binding.isRecord()) {
+/*		if (binding.isRecord()) {
 			RecordComponentBinding[] components = binding.components();
 			for (RecordComponentBinding comp : components) {
 				RecordComponentElement rec = new RecordComponentElementImpl(_env, comp);
 				enclosed.add(rec);
 			}
 		}
+*/
 		for (ReferenceBinding memberType : binding.memberTypes()) {
 			TypeElement type = new TypeElementImpl(_env, memberType, null);
 			enclosed.add(type);
@@ -178,7 +179,7 @@ public class TypeElementImpl extends ElementImpl implements TypeElement {
 		Collections.sort(enclosed, new SourceLocationComparator());
 		return Collections.unmodifiableList(enclosed);
 	}
-
+/*
 	@Override
     public List<? extends RecordComponentElement> getRecordComponents() {
 		if (_binding instanceof SourceTypeBinding) {
@@ -194,7 +195,7 @@ public class TypeElementImpl extends ElementImpl implements TypeElement {
 		// TODO: Add code for BinaryTypeBinding, which, as of now doesn't seem to contain components
 		return Collections.emptyList();
     }
-
+*/
 	@Override
 	public List<? extends TypeMirror> getPermittedSubclasses() {
 		ReferenceBinding binding = (ReferenceBinding)_binding;
@@ -286,7 +287,7 @@ public class TypeElementImpl extends ElementImpl implements TypeElement {
 		if (refBinding.isInterface() && refBinding.isNestedType()) {
 			modifiers |= ClassFileConstants.AccStatic;
 		}
-		
+
 		return Factory.getModifiers(modifiers, getKind(), refBinding.isBinaryBinding());
 	}
 

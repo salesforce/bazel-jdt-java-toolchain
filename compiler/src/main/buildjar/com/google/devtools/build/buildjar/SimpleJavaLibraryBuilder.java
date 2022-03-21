@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
@@ -179,6 +180,12 @@ public class SimpleJavaLibraryBuilder implements Closeable {
    */
   private void setUpSourceJars(JavaLibraryBuildRequest build) throws IOException {
     Path sourcesDir = build.getTempDir();
+
+    // ECJ complains if there are duplicate entries in the list javac doesnb't need this
+    if(Files.exists(sourcesDir)) {
+    	ArrayList<Path> sourceFiles = build.getSourceFiles();
+    	Files.walk(sourcesDir).forEach(sourceFiles::remove);
+    }
 
     cleanupDirectory(sourcesDir);
 

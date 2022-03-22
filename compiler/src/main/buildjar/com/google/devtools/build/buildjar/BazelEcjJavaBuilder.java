@@ -22,6 +22,7 @@ import java.nio.charset.Charset;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Supplier;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
@@ -33,6 +34,7 @@ import com.google.devtools.build.buildjar.javac.plugins.BlazeJavaCompilerPlugin;
 import com.google.devtools.build.buildjar.javac.plugins.dependency.DependencyModule;
 import com.google.devtools.build.lib.worker.ProtoWorkerMessageProcessor;
 import com.google.devtools.build.lib.worker.WorkRequestHandler;
+import com.google.devtools.build.lib.worker.WorkRequestHandler.WorkRequestCallback;
 import com.google.devtools.build.lib.worker.WorkRequestHandler.WorkRequestHandlerBuilder;
 
 /** The JavaBuilder main called by bazel. (renamed from BazelJavaBuilder) */
@@ -46,7 +48,7 @@ public class BazelEcjJavaBuilder {
     if (args.length == 1 && args[0].equals("--persistent_worker")) {
       WorkRequestHandler workerHandler =
           new WorkRequestHandlerBuilder(
-                  builder::parseAndBuild,
+        		  new WorkRequestCallback((request, pw) -> builder.parseAndBuild(request.getArgumentsList(), pw)),
                   System.err,
                   new ProtoWorkerMessageProcessor(System.in, System.out))
               .setCpuUsageBeforeGc(Duration.ofSeconds(10))
@@ -75,11 +77,7 @@ public class BazelEcjJavaBuilder {
   public int parseAndBuild(List<String> args, PrintWriter pw) {
     try {
       JavaLibraryBuildRequest build = parse(args);
-      try (SimpleJavaLibraryBuilder builder =
-          build.getDependencyModule().reduceClasspath()
-              ? new ReducedClasspathJavaLibraryBuilder()
-              : new SimpleJavaLibraryBuilder()) {
-
+      try (SimpleJavaLibraryBuilder builder = getBuilder(build).get()) {
         return build(builder, build, pw);
       }
     } catch (InvalidCommandLineException e) {
@@ -89,6 +87,14 @@ public class BazelEcjJavaBuilder {
       e.printStackTrace();
       return 1;
     }
+  }
+
+  private Supplier<SimpleJavaLibraryBuilder> getBuilder(JavaLibraryBuildRequest build) {
+    if(build.getJavacOpts().contains("-Xecj_use_direct_deps_only"))
+      return StrictDepsClasspathJavaLibraryBuilder::new;
+    return build.getDependencyModule().reduceClasspath()
+        ? ReducedClasspathJavaLibraryBuilder::new
+        : SimpleJavaLibraryBuilder::new;
   }
 
   /**

@@ -24,12 +24,12 @@ import java.util.Map;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.io.MoreFiles;
+import com.google.devtools.build.buildjar.jarhelper.JarCreator;
 import com.google.devtools.build.buildjar.javac.JavacOptions;
 import com.google.devtools.build.buildjar.javac.JavacOptions.FilteredJavacopts;
 import com.google.devtools.build.buildjar.javac.JavacOptions.ReleaseOptionNormalizer;
 import com.google.devtools.build.buildjar.proto.JavaCompilation;
 import com.google.devtools.build.lib.view.proto.Deps;
-import com.salesforce.bazel.jdt.toolchain.builder.jarhelper.JarCreator;
 
 
 /**

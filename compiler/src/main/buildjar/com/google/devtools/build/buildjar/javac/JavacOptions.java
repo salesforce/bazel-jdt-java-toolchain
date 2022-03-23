@@ -14,16 +14,17 @@
 
 package com.google.devtools.build.buildjar.javac;
 
-import com.google.auto.value.AutoValue;
-import com.google.common.base.Joiner;
-import com.google.common.collect.ImmutableList;
-import com.google.common.primitives.Ints;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+
+import com.google.auto.value.AutoValue;
+import com.google.common.base.Joiner;
+import com.google.common.collect.ImmutableList;
+import com.google.common.primitives.Ints;
 
 /**
  * Preprocess javac -Xlint options. We also need to make the different versions of javac treat
@@ -80,7 +81,7 @@ public final class JavacOptions {
   }
 
   private static boolean isBazelSpecificFlag(String opt) {
-    return opt.startsWith("-Werror:") || opt.startsWith("-Xep");
+    return opt.startsWith("-Werror:") || opt.startsWith("-Xep") || opt.startsWith("-Xecj");
   }
 
   /**

@@ -44,8 +44,7 @@ jobs:
 
     - name: Build Distribution
       run: |
-        "${GITHUB_WORKSPACE}/bin/bazel" build //dist:rules_jdt
-        "${GITHUB_WORKSPACE}/bin/bazel" build //dist:relnotes
+        "${GITHUB_WORKSPACE}/bin/bazel" build //dist:all
 
     - name: Publish Release
       uses: "marvinpinto/action-automatic-releases@latest"
@@ -56,6 +55,6 @@ jobs:
         title: "Development Build"
         files: |
           LICENSE
-          bazel-bin/dist/rules_jdt.tar.gz
+          bazel-bin/dist/rules_jdt-*.tar.gz
           bazel-bin/dist/changelog.txt
           bazel-bin/dist/relnotes.txt

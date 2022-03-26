@@ -4,7 +4,8 @@ load(
   "default_java_toolchain", "DEFAULT_TOOLCHAIN_CONFIGURATION"
 )
 
-version = "0.1"
+version = "0.1.0"
+
 def default_jdt_toolchain(name, release, **kwargs):
     """A convenience macro for creating a default_java_toolchain using ECJ compiler.
 

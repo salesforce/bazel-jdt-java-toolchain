@@ -1,6 +1,7 @@
 load("@rules_pkg//:pkg.bzl", "pkg_tar")
 load("@rules_pkg//pkg/releasing:defs.bzl", "print_rel_notes")
 load("@rules_pkg//pkg/releasing:git.bzl", "git_changelog")
+load("//jdt:defs.bzl", "version")
 
 package(
     default_visibility = ["//visibility:private"],
@@ -8,7 +9,7 @@ package(
 
 # Build the artifact to put on the github release page.
 pkg_tar(
-    name = "rules_jdt",
+    name = "rules_jdt-%s" % version,
     srcs = ["//:distribution"],
     extension = "tar.gz",
     mode = "0444",
@@ -27,8 +28,8 @@ print_rel_notes(
     repo = "bazel-jdt-java-toolchain",
     setup_file = "jdt:repositories.bzl",
     toolchains_method = "rules_jdt_toolchains",
-    artifact_name = "rules_jdt.tar.gz",
-    version = "latest",
+    artifact_name = "rules_jdt-%s.tar.gz" % version,
+    version = version,
 )
 
 # Builds a Git changelog

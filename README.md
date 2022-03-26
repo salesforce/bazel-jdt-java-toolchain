@@ -18,7 +18,7 @@ Please create your own `default_java_toolchain` if this doesn't work for your us
 Have a look at `jdt/BUILD` to see which JDKs are supported.
 
 
-# JDT Notes
+## JDT Notes
 
 Read [ECJ README](compiler/src/main/ecj/README.md) for details about updating JDT.
 
@@ -112,3 +112,11 @@ Without it the compiler would be finished before you are able to connect.
 Once you run the command, connect to the waiting process with your IDE's remote debugger.
 
 
+# Development Guide
+
+This project can be loaded with the Bazel Eclipse Feature.
+The VS Code Bazel Java extension should also work.
+
+## Releasing
+
+See [RELEASING README](dist/README.md).

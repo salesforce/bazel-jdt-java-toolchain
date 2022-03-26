@@ -46,8 +46,7 @@ jobs:
 
     - name: Build Distribution
       run: |
-        "${GITHUB_WORKSPACE}/bin/bazel" build //dist:rules_jdt
-        "${GITHUB_WORKSPACE}/bin/bazel" build //dist:relnotes
+        "${GITHUB_WORKSPACE}/bin/bazel" build //dist:all
 
     - name: Replace version with tag info
       # more inspiration at https://blog.pusher.com/continuous-releases-github-actions/
@@ -62,5 +61,5 @@ jobs:
         body_path: "bazel-bin/dist/relnotes.txt"
         files: |
           LICENSE
-          bazel-bin/dist/rules_jdt.tar.gz
+          bazel-bin/dist/rules_jdt-*.tar.gz
           bazel-bin/dist/changelog.txt

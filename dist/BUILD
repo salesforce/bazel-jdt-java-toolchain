@@ -7,10 +7,10 @@ package(
 )
 
 # the upcoming release to publish
-_version = "0.0.9"
+_version = "0.1.0"
 
 # the last public release on GitHub
-_previous_release_tag = "0.0.6"
+_previous_release_tag = "0.0.9"
 
 # Build the artifact to put on the github release page.
 pkg_tar(

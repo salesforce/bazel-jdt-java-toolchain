@@ -45,6 +45,7 @@ java_library(
         "@rules_jdt_guava",
         "@rules_jdt_jacoco_core",
         "@com_google_protobuf//:protobuf_java",
+        "@org_ow2_asm_asm",
     ],
 )
 

@@ -60,6 +60,15 @@ def rules_jdt_dependencies(repositories = _DEFAULT_REPOSITORIES):
         server_urls = _DEFAULT_REPOSITORIES,
     )
     
+    jvm_maven_import_external(
+        name = "org_ow2_asm_asm",
+        artifact = "org.ow2.asm:asm:jar:9.3",
+        artifact_sha256 = "1263369b59e29c943918de11d6d6152e2ec6085ce63e5710516f8c67d368e4bc",
+        srcjar_sha256 = "5ceb3d0b41a8eb8b416f28778b27c0e290143b6dc29d887b1cf40e2c0727f096",
+        licenses = ["notice"],
+        server_urls = _DEFAULT_REPOSITORIES,
+    )
+
 def rules_jdt_toolchains():
     """An utility method to load all Java toolchains.
 

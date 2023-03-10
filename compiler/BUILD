@@ -46,6 +46,9 @@ java_library(
         "@rules_jdt_jacoco_core",
         "@com_google_protobuf//:protobuf_java",
         "@org_ow2_asm_asm",
+        "@org_ow2_asm_asm_analysis",
+        "@org_ow2_asm_asm_commons",
+        "@org_ow2_asm_asm_tree",
     ],
 )
 

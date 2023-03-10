@@ -64,8 +64,45 @@ def rules_jdt_dependencies(repositories = _DEFAULT_REPOSITORIES):
         name = "org_ow2_asm_asm",
         artifact = "org.ow2.asm:asm:jar:9.3",
         artifact_sha256 = "1263369b59e29c943918de11d6d6152e2ec6085ce63e5710516f8c67d368e4bc",
-        srcjar_sha256 = "5ceb3d0b41a8eb8b416f28778b27c0e290143b6dc29d887b1cf40e2c0727f096",
         licenses = ["notice"],
+        server_urls = _DEFAULT_REPOSITORIES,
+    )
+
+    jvm_maven_import_external(
+        name = "org_ow2_asm_asm_analysis",
+        artifact = "org.ow2.asm:asm-analysis:jar:9.3",
+        artifact_sha256 = "37fd5392bb2cf4c15f202ffefd46d0e92bb34ff848c549f30d426a60d6b29495",
+        deps = ["@org_ow2_asm_asm_tree"],
+        server_urls = _DEFAULT_REPOSITORIES,
+    )
+
+    jvm_maven_import_external(
+        name = "org_ow2_asm_asm_commons",
+        artifact = "org.ow2.asm:asm-commons:jar:9.3",
+        artifact_sha256 = "a347c24732db2aead106b6e5996a015b06a3ef86e790a4f75b61761f0d2f7f39",
+        deps = [
+            "@org_ow2_asm_asm",
+            "@org_ow2_asm_asm_analysis",
+            "@org_ow2_asm_asm_tree",
+        ],
+        server_urls = _DEFAULT_REPOSITORIES,
+    )
+    jvm_maven_import_external(
+        name = "org_ow2_asm_asm_tree",
+        artifact = "org.ow2.asm:asm-tree:jar:9.3",
+        artifact_sha256 = "ae629c2609f39681ef8d140a42a23800464a94f2d23e36d8f25cd10d5e4caff4",
+        deps = ["@org_ow2_asm_asm"],
+        server_urls = _DEFAULT_REPOSITORIES,
+    )
+    jvm_maven_import_external(
+        name = "org_ow2_asm_asm_util",
+        artifact = "org.ow2.asm:asm-util:jar:9.3",
+        artifact_sha256 = "70f78f291ca0298afdb567fa85c5667869bc3da3914784816413853994962192",
+        deps = [
+            "@org_ow2_asm_asm",
+            "@org_ow2_asm_asm_analysis",
+            "@org_ow2_asm_asm_tree",
+        ],
         server_urls = _DEFAULT_REPOSITORIES,
     )
 

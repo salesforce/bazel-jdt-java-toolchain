@@ -2,8 +2,8 @@
 
 We are using a patched version of ECJ 4.23 to incorporate fixes for:
 
-* https://bugs.eclipse.org/bugs/show_bug.cgi?id=574111
-  https://git.eclipse.org/r/c/jdt/eclipse.jdt.core/+/181728
+* Issue [844](https://github.com/eclipse-jdt/eclipse.jdt.core/issues/844) [PR 845](https://github.com/eclipse-jdt/eclipse.jdt.core/pull/845)
+  (Bugzilla: [574111](https://bugs.eclipse.org/bugs/show_bug.cgi?id=574111) [Gerrit](https://git.eclipse.org/r/c/jdt/eclipse.jdt.core/+/181728))
 
 
 ## Issue with source/target and JDKs

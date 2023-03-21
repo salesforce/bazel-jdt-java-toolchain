@@ -25,8 +25,7 @@ __pycache__/
 *.zip
 *.tar.gz
 *.rar
-# FIXME: identify the specific jars that need to be checked in?
-# *.jar
+*.jar
 
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*

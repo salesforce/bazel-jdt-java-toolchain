@@ -59,6 +59,13 @@ rules_jdt_dependencies()
 # note: use jvm_maven_import_external below for dev/test-only dependencies
 #       public dependencies must go into jdt/repositories.bzl
 #
+
+load("@bazel_tools//tools/build_defs/repo:jvm.bzl", "jvm_maven_import_external")
+_DEFAULT_REPOSITORIES = [
+    "https://repo1.maven.org/maven2",
+    "https://maven.google.com",
+]
+
 jvm_maven_import_external(
     name = "rules_jdt_guava",
     artifact = "com.google.guava:guava:31.0.1-jre",

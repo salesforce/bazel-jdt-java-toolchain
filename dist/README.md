@@ -1,11 +1,13 @@
 # Package rules_jdt
 
+## Manually
 ```
 bazel build :relnotes
 cat ../bazel-bin/dist/relnotes.txt
 tar tzf ../bazel-bin/dist/rules_jdt.tar.gz
 ```
 
+## Publish Release
 1. Ensure all builds & tests are green.
 2. Review `_previous_release_tag` in [BUILD](BUILD) matches the last public release on GitHub.
    (Update and commit if necessary.)

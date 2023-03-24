@@ -9,7 +9,7 @@ tar tzf ../bazel-bin/dist/rules_jdt.tar.gz
 
 ## Publish Release
 1. Ensure all builds & tests are green.
-2. Review `_previous_release_tag` in [BUILD](BUILD) matches the last public release on GitHub.
+2. Review `_previous_release_tag` in [BUILD](BUILD) matches [the last public release on GitHub](https://github.com/salesforce/bazel-jdt-java-toolchain/releases).
    (Update and commit if necessary.)
 3. Tag the release using `_version` defined in [BUILD](BUILD) (`git tag`).
 4. Update `_version` to next development version and `_previous_release_tag` to the one you just created.

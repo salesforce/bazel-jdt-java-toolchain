@@ -11,6 +11,7 @@ bazel-*
 .project
 .settings/
 .classpath
+.eclipse
 
 # output folders
 bin/

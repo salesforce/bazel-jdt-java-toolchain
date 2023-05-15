@@ -70,6 +70,8 @@ jvm_maven_import_external(
     name = "rules_jdt_guava",
     artifact = "com.google.guava:guava:31.0.1-jre",
     artifact_sha256 = "d5be94d65e87bd219fb3193ad1517baa55a3b88fc91d21cf735826ab5af087b9",
+    srcjar_urls = [server + "/com/google/guava/guava/31.0.1-jre/guava-31.0.1-jre-sources.jar" for server in _DEFAULT_REPOSITORIES],
+    srcjar_sha256 = "fc0fb66f315f10b8713fc43354936d3649a8ad63f789d42fd7c3e55ecf72e092",
     licenses = ["notice"],
     server_urls = _DEFAULT_REPOSITORIES,
 )

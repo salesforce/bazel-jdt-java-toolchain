@@ -20,6 +20,7 @@ import static com.google.common.collect.MoreCollectors.toOptional;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Comparator.comparing;
 
+import java.io.File;
 import java.io.IOError;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -131,6 +132,7 @@ public class BlazeEcjMain {
 //        }
 //      }
     }
+    
     errWriter.flush();
     ImmutableList<FormattedDiagnostic> diagnostics = diagnosticsBuilder.build();
 
@@ -151,14 +153,55 @@ public class BlazeEcjMain {
         }
       }
     }
+    
+    String output = errOutput.toString();
 
-    return BlazeJavacResult.createFullResult(
+    // JDT uses getAbsolutePath, which makes reporting of file paths to point into Bazel sandbox
+    // this causes issues in IntelliJ 
+    String canonicalPathPrefix = null;
+    try {
+		canonicalPathPrefix = detectWorkingDirPathPrefix(arguments);
+		if(canonicalPathPrefix != null) {
+			output = output.replace(canonicalPathPrefix, "");
+		}
+    } catch (IOException e) {
+		e.printStackTrace(errWriter);
+	    errWriter.flush();
+	}
+
+	return BlazeJavacResult.createFullResult(
         status,
         filterDiagnostics(werror, diagnostics),
-        errOutput.toString(),
+        output,
         compiler,
         builder.build());
   }
+
+	private static String detectWorkingDirPathPrefix(BlazeJavacArguments arguments) throws IOException {
+		// since the JDT compiler is executed from within the sandbox, the absolute path will be resolved to the working directory
+		// we simple remove the working directory
+		String workDir = System.getProperty("user.dir");
+		if(workDir == null)
+			throw new IOException("No working directory returned by JVM for property user.dir!");
+		
+		if(!workDir.endsWith("/")) {
+			workDir += "/";
+		}
+
+		// the following code is only for our own sanity
+		Optional<Path> first = arguments.sourcePath().stream().findFirst();
+		if (!first.isPresent()) {
+			first = arguments.sourceFiles().stream().findFirst();
+		}
+
+		String absoluteFilePath = first.get().toAbsolutePath().toString();
+		if (!absoluteFilePath.startsWith(workDir)) {
+			String filePath = first.get().toString();
+			throw new IOException(String.format("Unable to confirm working dir '%s' using file '%s' with absolute path '%s'!", workDir, filePath, absoluteFilePath));
+		}
+
+		return workDir;
+	}
 
   private static Status fromResult(Boolean result) {
 	if(result == null)

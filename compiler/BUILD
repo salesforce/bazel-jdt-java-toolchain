@@ -1,22 +1,5 @@
 load("@rules_java//java:defs.bzl", "java_library")
 
-java_library(
-    name = "jdt_java_builder_lib",
-    srcs = glob(["src/main/java/**/*.java"]),
-    deps = [
-        ":work_request_handlers",
-        ":buildjar",
-        ":ecj",
-        "//compiler/src/main/protobuf:deps_java_proto",
-        "//compiler/src/main/protobuf:java_compilation_java_proto",
-        "//compiler/src/main/protobuf:worker_protocol_java_proto",
-        "@rules_jdt_guava",
-        "@com_google_protobuf//:protobuf_java",
-        "@com_google_protobuf//:protobuf_java_util",
-    ],
-    visibility = ["//visibility:public"],
-)
-
 # Bazel's Worker
 java_library(
     name = "work_request_handlers",
@@ -52,6 +35,7 @@ java_library(
         "@rules_jdt_org_ow2_asm_asm_commons",
         "@rules_jdt_org_ow2_asm_asm_tree",
     ],
+    visibility = ["//:__subpackages__"],
 )
 
 

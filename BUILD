@@ -19,9 +19,8 @@ filegroup(
 
 java_binary(
     name = "JdtJavaBuilder",
-    #main_class = "com.salesforce.bazel.jdt.toolchain.builder.JdtJavaBuilder",
     main_class = "com.google.devtools.build.buildjar.BazelEcjJavaBuilder",
-    runtime_deps = ["//compiler:jdt_java_builder_lib"],
+    runtime_deps = ["//compiler:buildjar"],
 )
 
 exports_files(

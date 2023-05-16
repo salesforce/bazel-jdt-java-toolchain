@@ -110,9 +110,10 @@ public class BazelEcjJavaBuilder {
     if (result.status() == Status.REQUIRES_FALLBACK) {
       return 0;
     }
-    for (FormattedDiagnostic d : result.diagnostics()) {
-      err.write(d.getFormatted() + "\n");
-    }
+// disabled to prevent additional output of error message without much value (the errors are contained in the result output)
+//    for (FormattedDiagnostic d : result.diagnostics()) {
+//      err.write(d.getFormatted() + "\n");
+//    }
     err.write(result.output());
     return result.isOk() ? 0 : 1;
   }

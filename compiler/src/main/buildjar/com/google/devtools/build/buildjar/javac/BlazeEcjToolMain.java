@@ -20,36 +20,22 @@ import static com.google.common.collect.MoreCollectors.toOptional;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Comparator.comparing;
 
-import java.io.File;
 import java.io.IOError;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.lang.reflect.Field;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 
-import javax.annotation.processing.Processor;
 import javax.tools.Diagnostic;
+import javax.tools.JavaCompiler;
 import javax.tools.JavaCompiler.CompilationTask;
 import javax.tools.StandardJavaFileManager;
 import javax.tools.StandardLocation;
 
-import org.eclipse.jdt.core.compiler.CompilationProgress;
-import org.eclipse.jdt.internal.compiler.Compiler;
-import org.eclipse.jdt.internal.compiler.DefaultErrorHandlingPolicies;
-import org.eclipse.jdt.internal.compiler.ICompilerRequestor;
-import org.eclipse.jdt.internal.compiler.IErrorHandlingPolicy;
-import org.eclipse.jdt.internal.compiler.IProblemFactory;
-import org.eclipse.jdt.internal.compiler.apt.dispatch.BaseAnnotationProcessorManager;
-import org.eclipse.jdt.internal.compiler.apt.dispatch.BaseProcessingEnvImpl;
-import org.eclipse.jdt.internal.compiler.apt.dispatch.ProcessorInfo;
-import org.eclipse.jdt.internal.compiler.env.INameEnvironment;
-import org.eclipse.jdt.internal.compiler.impl.CompilerOptions;
-import org.eclipse.jdt.internal.compiler.problem.DefaultProblemFactory;
+import org.eclipse.jdt.internal.compiler.tool.EclipseCompiler;
 import org.eclipse.jdt.internal.compiler.tool.EclipseFileManager;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -62,72 +48,9 @@ import com.google.devtools.build.buildjar.javac.plugins.BlazeJavaCompilerPlugin;
 import com.google.devtools.build.buildjar.javac.statistics.BlazeJavacStatistics;
 
 /**
- * BlazeJavacMain adapted to JDT Compiler
+ * BlazeJavacMain adapted to EclipseCompiler tool impl.
  */
-public class BlazeEcjMain {
-
-	static class BlazeEcjProcessingEnv extends BaseProcessingEnvImpl {
-
-		private EclipseFileManager fileManager;
-		private Locale locale;
-
-		public BlazeEcjProcessingEnv(EclipseFileManager fileManager) {
-			this.fileManager = fileManager;
-
-			try {
-				Field field = EclipseFileManager.class.getField("locale");
-				field.setAccessible(true);
-				locale = (Locale) field.get(fileManager);
-			} catch (IllegalArgumentException | IllegalAccessException | NoSuchFieldException | SecurityException e) {
-				throw new IllegalStateException("Unable to get field 'locale'! Unhandled ECJ/JDT change?", e);
-			}
-		}
-
-		@Override
-		public Locale getLocale() {
-			return locale;
-		}
-	}
-
-	static class BlazeEcjAnnotationProcessorManager extends BaseAnnotationProcessorManager {
-
-		// Set this to true in order to trace processor discovery when -XprintProcessorInfo is specified
-		private final static boolean VERBOSE_PROCESSOR_DISCOVERY = true;
-		private boolean _printProcessorDiscovery = false;
-
-		private final ClassLoader processorLoader;
-
-		public BlazeEcjAnnotationProcessorManager(StandardJavaFileManager fileManager,
-				BlazeJavacArguments arguments) {
-
-
-			Iterable<? extends File> modulePathLocation = fileManager.getLocation(StandardLocation.ANNOTATION_PROCESSOR_MODULE_PATH);
-			if(modulePathLocation != null) {
-				// use module path
-				processorLoader = fileManager.getClassLoader(StandardLocation.ANNOTATION_PROCESSOR_MODULE_PATH);
-			} else {
-				// use processor path
-				processorLoader = fileManager.getClassLoader(StandardLocation.ANNOTATION_PROCESSOR_PATH);
-			}
-			
-			arguments.plugins();
-		
-		}
-
-		@Override
-		public ProcessorInfo discoverNextProcessor() {
-
-			// TODO Auto-generated method stub
-			return null;
-		}
-
-		@Override
-		public void reportProcessorException(Processor p, Exception e) {
-			// TODO Auto-generated method stub
-
-		}
-
-	}
+public class BlazeEcjToolMain {
 
 //  /**
 //   * Sets up a BlazeJavaCompiler with the given plugins within the given context.
@@ -153,19 +76,6 @@ public class BlazeEcjMain {
       return BlazeJavacResult.error(e.getMessage());
     }
 
-    StringWriter errOutput = new StringWriter();
-    PrintWriter errWriter = new PrintWriter(errOutput);
-
-
-    INameEnvironment namingEnvironment;
-    IErrorHandlingPolicy errorHandlingPolicy = DefaultErrorHandlingPolicies.exitAfterAllProblems();
-    IProblemFactory problemFactory = new DefaultProblemFactory(Locale.getDefault());
-	CompilerOptions compilerOptions;
-	ICompilerRequestor requestor;
-	CompilationProgress progress = null;
-	Compiler compiler = new Compiler(namingEnvironment, errorHandlingPolicy, compilerOptions, requestor, problemFactory, errWriter, progress);
-    compiler.options.produceReferenceInfo = true;
-
 //    Context context = new Context();
 //    BlazeJavacStatistics.preRegister(context);
 //    CacheFSInfo.preRegister(context);
@@ -173,8 +83,12 @@ public class BlazeEcjMain {
     BlazeJavacStatistics.Builder builder = BlazeJavacStatistics.newBuilder();
 
     Status status = Status.ERROR;
+    StringWriter errOutput = new StringWriter();
+    // TODO(cushon): where is this used when a diagnostic listener is registered? Consider removing
+    // it and handling exceptions directly in callers.
+    PrintWriter errWriter = new PrintWriter(errOutput);
     Listener diagnosticsBuilder = new Listener(arguments.failFast());
-
+    JavaCompiler compiler = new EclipseCompiler();
 
     // Initialize parts of context that the filemanager depends on
 //    context.put(DiagnosticListener.class, diagnosticsBuilder);
@@ -185,12 +99,6 @@ public class BlazeEcjMain {
         new EclipseFileManager(null, UTF_8)) {
 
     setLocations(fileManager, arguments);
-
-    BlazeEcjProcessingEnv processingEnv = new BlazeEcjProcessingEnv(fileManager);
-
-    compiler.annotationProcessorManager = new BlazeEcjAnnotationProcessorManager(fileManager, arguments);
-    compiler.options.storeAnnotations = true;
-
 
     Iterable<Path> sourceFiles = arguments.sourceFiles(); // avoid NoSuchMethodError: 'java.lang.Iterable javax.tools.StandardJavaFileManager.getJavaFileObjectsFromPaths(java.util.Collection)'
 	CompilationTask task =
@@ -475,5 +383,5 @@ public class BlazeEcjMain {
     }
   }
 
-  private BlazeEcjMain() {}
+  private BlazeEcjToolMain() {}
 }

@@ -176,7 +176,7 @@ public final class JavaLibraryBuildRequest {
     this.processingModule = processingBuilder.build();
 
     ImmutableList.Builder<BlazeJavaCompilerPlugin> pluginsBuilder =
-        ImmutableList.<BlazeJavaCompilerPlugin>builder();//.add(dependencyModule.getPlugin());
+        ImmutableList.<BlazeJavaCompilerPlugin>builder();//.add(dependencyModule.getPlugin()); // FIXME: need JDT accessibility rules to monitor strict deps
     processingModule.registerPlugin(pluginsBuilder);
     pluginsBuilder.addAll(extraPlugins);
     this.plugins = pluginsBuilder.build();

@@ -15,42 +15,29 @@
 package com.google.devtools.build.buildjar.javac;
 
 import static com.google.common.collect.ImmutableList.toImmutableList;
-import static com.google.common.collect.Iterables.getOnlyElement;
 import static com.google.common.collect.MoreCollectors.toOptional;
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Comparator.comparing;
+import static java.util.stream.Collectors.joining;
 
-import java.io.File;
-import java.io.IOError;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.lang.reflect.Field;
 import java.nio.file.Path;
-import java.util.Collection;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
-import javax.annotation.processing.Processor;
 import javax.tools.Diagnostic;
-import javax.tools.JavaCompiler.CompilationTask;
-import javax.tools.StandardJavaFileManager;
-import javax.tools.StandardLocation;
 
-import org.eclipse.jdt.core.compiler.CompilationProgress;
-import org.eclipse.jdt.internal.compiler.Compiler;
-import org.eclipse.jdt.internal.compiler.DefaultErrorHandlingPolicies;
+import org.eclipse.jdt.core.compiler.CharOperation;
+import org.eclipse.jdt.internal.compiler.CompilationResult;
 import org.eclipse.jdt.internal.compiler.ICompilerRequestor;
-import org.eclipse.jdt.internal.compiler.IErrorHandlingPolicy;
-import org.eclipse.jdt.internal.compiler.IProblemFactory;
-import org.eclipse.jdt.internal.compiler.apt.dispatch.BaseAnnotationProcessorManager;
-import org.eclipse.jdt.internal.compiler.apt.dispatch.BaseProcessingEnvImpl;
-import org.eclipse.jdt.internal.compiler.apt.dispatch.ProcessorInfo;
-import org.eclipse.jdt.internal.compiler.env.INameEnvironment;
-import org.eclipse.jdt.internal.compiler.impl.CompilerOptions;
-import org.eclipse.jdt.internal.compiler.problem.DefaultProblemFactory;
-import org.eclipse.jdt.internal.compiler.tool.EclipseFileManager;
+import org.eclipse.jdt.internal.compiler.batch.Main;
+import org.eclipse.jdt.internal.compiler.env.ICompilationUnit;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
@@ -59,74 +46,82 @@ import com.google.devtools.build.buildjar.InvalidCommandLineException;
 import com.google.devtools.build.buildjar.javac.BlazeJavacResult.Status;
 import com.google.devtools.build.buildjar.javac.FormattedDiagnostic.Listener;
 import com.google.devtools.build.buildjar.javac.plugins.BlazeJavaCompilerPlugin;
+import com.google.devtools.build.buildjar.javac.plugins.processing.AnnotationProcessingModule;
+import com.google.devtools.build.buildjar.javac.plugins.processing.AnnotationProcessingPlugin;
 import com.google.devtools.build.buildjar.javac.statistics.BlazeJavacStatistics;
+import com.google.devtools.build.buildjar.proto.JavaCompilation.CompilationUnit;
 
 /**
  * BlazeJavacMain adapted to JDT Compiler
  */
 public class BlazeEcjMain {
 
-	static class BlazeEcjProcessingEnv extends BaseProcessingEnvImpl {
+	static class BlazeEclipseBatchCompiler extends Main {
 
-		private EclipseFileManager fileManager;
-		private Locale locale;
+		private final AnnotationProcessingModule processingModule;
+		private Path sandboxPathPrefix;
+		private Map<Path, Path> sourceFilesByAbsoluteOrCanonicalPath;
 
-		public BlazeEcjProcessingEnv(EclipseFileManager fileManager) {
-			this.fileManager = fileManager;
+		public BlazeEclipseBatchCompiler(PrintWriter outWriter, PrintWriter errWriter,
+				ImmutableList<BlazeJavaCompilerPlugin> plugins, String sandboxPathPrefix, Map<Path, Path> sourceFilesByAbsoluteOrCanonicalPath) {
+			super(outWriter, errWriter, false /* systemExitWhenFinished */, null /* customDefaultOptions */,
+					null /* compilationProgress */);
+			this.sandboxPathPrefix = Path.of(sandboxPathPrefix);
+			this.sourceFilesByAbsoluteOrCanonicalPath = sourceFilesByAbsoluteOrCanonicalPath;
+			this.processingModule = ((AnnotationProcessingPlugin) plugins.stream()
+					.filter(AnnotationProcessingPlugin.class::isInstance).findAny().get()).getProcessingModule();
+		}
 
-			try {
-				Field field = EclipseFileManager.class.getField("locale");
-				field.setAccessible(true);
-				locale = (Locale) field.get(fileManager);
-			} catch (IllegalArgumentException | IllegalAccessException | NoSuchFieldException | SecurityException e) {
-				throw new IllegalStateException("Unable to get field 'locale'! Unhandled ECJ/JDT change?", e);
+		@Override
+		public ICompilerRequestor getBatchRequestor() {
+			ICompilerRequestor delegate = super.getBatchRequestor();
+			return new ICompilerRequestor() {
+				private final Set<ICompilationUnit> toplevels = new HashSet<>();
+
+				@Override
+				public void acceptResult(CompilationResult result) {
+					delegate.acceptResult(result);
+
+					ICompilationUnit compilationUnit = result.getCompilationUnit();
+					if (compilationUnit != null && toplevels.add(compilationUnit)) {
+						recordAnnotationProcessingInfo(result);
+					}
+				}
+			};
+		}
+
+		protected void recordAnnotationProcessingInfo(CompilationResult result) {
+			CompilationUnit.Builder builder = CompilationUnit.newBuilder();
+
+			if (result.getFileName() != null) {
+				// paths we get from ECJ are absolute, we have to translate them back to the exec-root relative path
+				Path path = Path.of(new String(result.getFileName()));
+				if(sourceFilesByAbsoluteOrCanonicalPath.containsKey(path))
+					path = sourceFilesByAbsoluteOrCanonicalPath.get(path);
+				else
+					path = sandboxPathPrefix.relativize(path);
+
+				builder.setPath(processingModule.stripSourceRoot(path).toString());
+				builder.setGeneratedByAnnotationProcessor(processingModule.isGenerated(path));
 			}
-		}
 
-		@Override
-		public Locale getLocale() {
-			return locale;
-		}
-	}
-
-	static class BlazeEcjAnnotationProcessorManager extends BaseAnnotationProcessorManager {
-
-		// Set this to true in order to trace processor discovery when -XprintProcessorInfo is specified
-		private final static boolean VERBOSE_PROCESSOR_DISCOVERY = true;
-		private boolean _printProcessorDiscovery = false;
-
-		private final ClassLoader processorLoader;
-
-		public BlazeEcjAnnotationProcessorManager(StandardJavaFileManager fileManager,
-				BlazeJavacArguments arguments) {
-
-
-			Iterable<? extends File> modulePathLocation = fileManager.getLocation(StandardLocation.ANNOTATION_PROCESSOR_MODULE_PATH);
-			if(modulePathLocation != null) {
-				// use module path
-				processorLoader = fileManager.getClassLoader(StandardLocation.ANNOTATION_PROCESSOR_MODULE_PATH);
-			} else {
-				// use processor path
-				processorLoader = fileManager.getClassLoader(StandardLocation.ANNOTATION_PROCESSOR_PATH);
+			if (result.packageName != null) {
+				builder.setPkg(CharOperation.toString(result.packageName));
 			}
-			
-			arguments.plugins();
-		
+
+			if (result.compiledTypes != null) {
+				for (Object typename : result.compiledTypes.keySet()) {
+					String typeName = new String((char[])typename);
+					int lastSlashPos = typeName.lastIndexOf('/');
+					if(lastSlashPos > -1) {
+						typeName = typeName.substring(lastSlashPos+1);
+					}
+					builder.addTopLevel(typeName.replace('$', '.'));
+				}
+			}
+
+			processingModule.recordUnit(builder.build());
 		}
-
-		@Override
-		public ProcessorInfo discoverNextProcessor() {
-
-			// TODO Auto-generated method stub
-			return null;
-		}
-
-		@Override
-		public void reportProcessorException(Processor p, Exception e) {
-			// TODO Auto-generated method stub
-
-		}
-
 	}
 
 //  /**
@@ -144,8 +139,15 @@ public class BlazeEcjMain {
 //  }
 
   public static BlazeJavacResult compile(BlazeJavacArguments arguments) {
+    // JDT uses getAbsolutePath/getCanonicalPath, which makes reporting of file paths to point into Bazel sandbox
+    // this causes issues in IDEs (IntelliJ and others) relying on parsing compiler output to map back errors/warnings
+    String sandboxPathPrefix;
+    try {
+    	sandboxPathPrefix = detectWorkingDirPathPrefix(arguments);
+    } catch (final IOException e) {
+	    return BlazeJavacResult.error(e.getMessage());
+	}
 
-    List<String> javacArguments = arguments.javacOptions();
     try {
       processPluginArgs(
           arguments.plugins(), arguments.javacOptions(), arguments.blazeJavacOptions());
@@ -156,73 +158,35 @@ public class BlazeEcjMain {
     StringWriter errOutput = new StringWriter();
     PrintWriter errWriter = new PrintWriter(errOutput);
 
+    List<String> ecjArguments = new ArrayList<>();
+    setLocations(ecjArguments, arguments);
+    ecjArguments.addAll(arguments.javacOptions());
+    arguments.sourceFiles().stream().map(Path::toString).forEach(ecjArguments::add);
 
-    INameEnvironment namingEnvironment;
-    IErrorHandlingPolicy errorHandlingPolicy = DefaultErrorHandlingPolicies.exitAfterAllProblems();
-    IProblemFactory problemFactory = new DefaultProblemFactory(Locale.getDefault());
-	CompilerOptions compilerOptions;
-	ICompilerRequestor requestor;
-	CompilationProgress progress = null;
-	Compiler compiler = new Compiler(namingEnvironment, errorHandlingPolicy, compilerOptions, requestor, problemFactory, errWriter, progress);
-    compiler.options.produceReferenceInfo = true;
+    errWriter.println();
+    errWriter.println(ecjArguments.stream().collect(joining(System.lineSeparator())));
+    errWriter.println();
+    errWriter.println();
 
-//    Context context = new Context();
-//    BlazeJavacStatistics.preRegister(context);
-//    CacheFSInfo.preRegister(context);
-//    setupBlazeJavaCompiler(arguments.plugins(), context);
+    Map<Path, Path> sourceFilesByAbsoluteOrCanonicalPath = new HashMap<>();
+    for (Path sourceFile : arguments.sourceFiles()) {
+    	sourceFilesByAbsoluteOrCanonicalPath.put(sourceFile.toAbsolutePath(), sourceFile);
+    	try {
+			sourceFilesByAbsoluteOrCanonicalPath.put(sourceFile.toRealPath(), sourceFile);
+		} catch (IOException e) {
+			return BlazeJavacResult.error(e.getMessage());
+		}
+	}
+
+    BlazeEclipseBatchCompiler compiler = new BlazeEclipseBatchCompiler(errWriter, errWriter, arguments.plugins(), sandboxPathPrefix, sourceFilesByAbsoluteOrCanonicalPath);
+    boolean compileResult = compiler.compile((String[]) ecjArguments.toArray(new String[ecjArguments.size()]));
+
+
     BlazeJavacStatistics.Builder builder = BlazeJavacStatistics.newBuilder();
 
-    Status status = Status.ERROR;
+    Status status =  compileResult ? Status.OK : Status.ERROR;
     Listener diagnosticsBuilder = new Listener(arguments.failFast());
 
-
-    // Initialize parts of context that the filemanager depends on
-//    context.put(DiagnosticListener.class, diagnosticsBuilder);
-//    Log.instance(context).setWriters(errWriter);
-//    Options.instance(context).put("-Xlint:path", "path");
-
-    try (StandardJavaFileManager fileManager =
-        new EclipseFileManager(null, UTF_8)) {
-
-    setLocations(fileManager, arguments);
-
-    BlazeEcjProcessingEnv processingEnv = new BlazeEcjProcessingEnv(fileManager);
-
-    compiler.annotationProcessorManager = new BlazeEcjAnnotationProcessorManager(fileManager, arguments);
-    compiler.options.storeAnnotations = true;
-
-
-    Iterable<Path> sourceFiles = arguments.sourceFiles(); // avoid NoSuchMethodError: 'java.lang.Iterable javax.tools.StandardJavaFileManager.getJavaFileObjectsFromPaths(java.util.Collection)'
-	CompilationTask task =
-    		  compiler
-              .getTask(
-                  errWriter,
-                  fileManager,
-                  diagnosticsBuilder,
-                  javacArguments,
-                  /* classes= */ ImmutableList.of(),
-                  fileManager.getJavaFileObjectsFromPaths(sourceFiles));
-//      try {
-        status = fromResult(task.call());
-//      } catch (PropagatedException e) {
-//        throw e.getCause();
-//      }
-    } catch (RuntimeException | IOException | LinkageError | AssertionError t) {
-      t.printStackTrace(errWriter);
-      status = Status.CRASH;
-//    } finally {
-//      if (status == Status.OK) {
-//        // There could be situations where we incorrectly skip Error Prone and the compilation
-//        // ends up succeeding, e.g., if there are errors that are fixed by subsequent round of
-//        // annotation processing.  This check ensures that if there were any flow events at all,
-//        // then plugins were run.  There may legitimately not be any flow events, e.g. -proc:only
-//        // or empty source files.
-//        if (compiler.skippedFlowEvents() > 0 && compiler.flowEvents() == 0) {
-//          errWriter.println("Expected at least one FLOW event");
-//          status = Status.ERROR;
-//        }
-//      }
-    }
 
     errWriter.flush();
     ImmutableList<FormattedDiagnostic> diagnostics = diagnosticsBuilder.build();
@@ -247,20 +211,23 @@ public class BlazeEcjMain {
 
     String output = errOutput.toString();
 
-    // JDT uses getAbsolutePath, which makes reporting of file paths to point into Bazel sandbox
-    // this causes issues in IntelliJ
-    String canonicalPathPrefix = null;
+    // JDT uses getAbsolutePath/getCanonicalPath, which makes reporting of file paths to point into Bazel sandbox
+    // this causes issues in IDEs (IntelliJ and others) relying on parsing compiler output to map back errors/warnings
+    String canonicalPathPrefix;
     try {
-		canonicalPathPrefix = detectWorkingDirPathPrefix(arguments);
-		if(canonicalPathPrefix != null) {
-			output = output.replace(canonicalPathPrefix, "");
-		}
-    } catch (IOException e) {
+    	canonicalPathPrefix = detectWorkingDirPathPrefix(arguments);
+
+
+    } catch (final IOException e) {
 		e.printStackTrace(errWriter);
 	    errWriter.flush();
+	    return BlazeJavacResult.error(e.getMessage());
 	}
 
-	return BlazeJavacResult.createFullResult(
+    if(canonicalPathPrefix != null) {
+    	output = output.replace(canonicalPathPrefix, "");
+    }
+    return BlazeJavacResult.createFullResult(
         status,
         filterDiagnostics(werror, diagnostics),
         output,
@@ -292,13 +259,6 @@ public class BlazeEcjMain {
 
 		return workDir;
 	}
-
-  private static Status fromResult(Boolean result) {
-	if(result == null)
-		return Status.CRASH;
-
-	return result.booleanValue() ? Status.OK : Status.ERROR;
-  }
 
   private static boolean isWerror(WerrorCustomOption werrorCustom, FormattedDiagnostic diagnostic) {
     switch (diagnostic.getKind()) {
@@ -368,58 +328,41 @@ public class BlazeEcjMain {
     }
   }
 
-  private static void setLocations(StandardJavaFileManager fileManager, BlazeJavacArguments arguments) {
-    try {
-      fileManager.setLocationFromPaths(StandardLocation.CLASS_PATH, arguments.classPath());
-      // modular dependencies must be on the module path, not the classpath
-      //[ECJ fails if both are set]fileManager.setLocationFromPaths(StandardLocation.MODULE_PATH, arguments.classPath());
+  private static void setLocations(List<String> ecjArguments, BlazeJavacArguments arguments) {
+	if(!arguments.processorPath().isEmpty()) {
+		ecjArguments.add("-processorpath");
+		ecjArguments.add(arguments.processorPath().stream().map(Path::toString).collect(joining(":")));
+	    // if release/target >= JDK 9 then -processorpath will be ignored by JDT but --processor-module-path is expected instead
+	    // (we set both to let JDT pick)
+		ecjArguments.add("--processor-module-path");
+		ecjArguments.add(arguments.processorPath().stream().map(Path::toString).collect(joining(":")));
+	}
 
-      fileManager.setLocationFromPaths(
-          StandardLocation.CLASS_OUTPUT, ImmutableList.of(arguments.classOutput()));
-      if (arguments.nativeHeaderOutput() != null) {
-        fileManager.setLocationFromPaths(
-            StandardLocation.NATIVE_HEADER_OUTPUT,
-            ImmutableList.of(arguments.nativeHeaderOutput()));
-      }
+	if(!arguments.classPath().isEmpty()) {
+		ecjArguments.add("-classpath");
+		ecjArguments.add(arguments.classPath().stream().map(Path::toString).collect(joining(":")));
+	}
 
-      ImmutableList<Path> sourcePath = arguments.sourcePath();
-      if (sourcePath.isEmpty()) {
-        // javac expects a module-info-relative source path to be set when compiling modules,
-        // otherwise it reports an error:
-        // "file should be on source path, or on patch path for module"
-        ImmutableList<Path> moduleInfos =
-            arguments.sourceFiles().stream()
-                .filter(f -> f.getFileName().toString().equals("module-info.java"))
-                .collect(toImmutableList());
-        if (moduleInfos.size() == 1) {
-          sourcePath = ImmutableList.of(getOnlyElement(moduleInfos).getParent());
-        }
-      }
-      fileManager.setLocationFromPaths(StandardLocation.SOURCE_PATH, sourcePath);
+  // modular dependencies must be on the module path, not the classpath
+  //[ECJ fails if both are set]fileManager.setLocationFromPaths(StandardLocation.MODULE_PATH, arguments.classPath());
 
-      Path system = arguments.system();
-      if (system != null) {
-        fileManager.setLocationFromPaths(
-            StandardLocation.locationFor("SYSTEM_MODULES"), ImmutableList.of(system));
-      }
-      // The bootclasspath may legitimately be empty if --release is being used.
-      Collection<Path> bootClassPath = arguments.bootClassPath();
-      if (!bootClassPath.isEmpty()) {
-    	//[ECJ fails if both are set]fileManager.setLocationFromPaths(StandardLocation.PLATFORM_CLASS_PATH, bootClassPath);
-      }
-      fileManager.setLocationFromPaths(
-          StandardLocation.ANNOTATION_PROCESSOR_PATH, arguments.processorPath());
-      // if release/traget >= JDK 9 then -processorpath will be ignored by JDT but --processor-module-path is expected instead
-      // (we set both to let JDT pick)
-      fileManager.setLocationFromPaths(
-              StandardLocation.ANNOTATION_PROCESSOR_MODULE_PATH, arguments.processorPath());
-      if (arguments.sourceOutput() != null) {
-        fileManager.setLocationFromPaths(
-            StandardLocation.SOURCE_OUTPUT, ImmutableList.of(arguments.sourceOutput()));
-      }
-    } catch (IOException e) {
-      throw new IOError(e);
+	ecjArguments.add("-d");
+	ecjArguments.add(arguments.classOutput().toString());
+
+    if (arguments.sourceOutput() != null) {
+    	ecjArguments.add("-s");
+    	ecjArguments.add(arguments.sourceOutput().toString());
     }
+
+	if(!arguments.sourcePath().isEmpty()) {
+		ecjArguments.add("-sourcepath");
+		ecjArguments.add(arguments.sourcePath().stream().map(Path::toString).collect(joining(":")));
+	}
+
+	if (arguments.system() != null) {
+    	ecjArguments.add("--system");
+    	ecjArguments.add(arguments.system().toString());
+	}
   }
 
 //  /**

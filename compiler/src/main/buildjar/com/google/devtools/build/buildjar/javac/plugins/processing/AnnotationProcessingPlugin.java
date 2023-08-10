@@ -26,6 +26,10 @@ public class AnnotationProcessingPlugin extends BlazeJavaCompilerPlugin {
     this.processingModule = processingModule;
   }
 
+  public AnnotationProcessingModule getProcessingModule() {
+	return processingModule;
+  }
+
 //  @Override
 //  public void postAttribute(Env<AttrContext> env) {
 //    if (toplevels.add(env.toplevel)) {

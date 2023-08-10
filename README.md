@@ -12,7 +12,7 @@ Once this is completed, add this to your `.bazelrc`:
 build --extra_toolchains=@bazel_jdt_java_toolchain//jdt:all
 ```
 
-By default the `jdt_java_toolchain` is using `local_jdk` for compilation. 
+By default the `jdt_java_toolchain` is using `local_jdk` for compilation.
 Please create your own `default_java_toolchain` if this doesn't work for your use case.
 
 Have a look at `jdt/BUILD` to see which JDKs are supported.
@@ -35,17 +35,18 @@ and point directly at the source of this repo for development and testing.
 
 Unfortunately this means additional steps are required for developers. This script can be
 used to facilitate the steps.
+
 ```
 #!/bin/bash
 
 bazel build :JdtJavaBuilder_deploy.jar
 cp -fv bazel-bin/JdtJavaBuilder_deploy.jar compiler/export/
 
-bazel build //compiler/third_party/turbine:turbine_direct_binary_deploy.jar 
+bazel build //compiler/third_party/turbine:turbine_direct_binary_deploy.jar
 cp -fv bazel-bin/compiler/third_party/turbine/turbine_direct_binary_deploy.jar compiler/tools/
 ```
 
-For your convinience, the `build-toolchain` script is provided in this repository.
+For your convenience, the `build-toolchain` script is provided in this repository.
 
 
 ## Debugging
@@ -85,8 +86,8 @@ ERROR: /Users/username/app/main/core/some-java-target/BUILD.bazel:4:13: Building
   /Users/username/tools/Darwin/jdk/bin/java -jar external/jdt_java_toolchain/builder/export/JdtJavaBuilder_deploy.jar @bazel-out/darwin-fastbuild/bin/some-java-target/libtarget-class.jar-0.params @bazel-out/darwin-fastbuild/bin/some-java-target/libtarget-class.jar-1.params)
 ```
 
-Either take the *SUBCOMMAND* or *ERROR* command. 
-You can ignore the `exec env` part. 
+Either take the *SUBCOMMAND* or *ERROR* command.
+You can ignore the `exec env` part.
 
 The interesting two steps are:
 
@@ -99,7 +100,7 @@ cd /private/var/tmp/_bazel_username/hash/execroot/core
 ```
 
 The first is the execution directory and the latter the command.
-You need to cd into the execution directory and then run the command yourself.
+You need to `cd` into the execution directory and then run the command yourself.
 But this time add the remote debug arguments (before `-jar`) as follows:
 
 ```
@@ -120,3 +121,4 @@ The VS Code Bazel Java extension should also work.
 ## Releasing
 
 See [RELEASING README](dist/README.md).
+

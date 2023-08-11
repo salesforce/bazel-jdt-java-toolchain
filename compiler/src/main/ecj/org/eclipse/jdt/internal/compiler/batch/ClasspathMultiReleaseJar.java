@@ -16,12 +16,12 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.zip.ZipEntry;
 
+import org.eclipse.jdt.internal.compiler.batch.FileSystem.ClasspathAnswer;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFileReader;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFormatException;
 import org.eclipse.jdt.internal.compiler.classfmt.ExternalAnnotationDecorator;
 import org.eclipse.jdt.internal.compiler.env.AccessRuleSet;
 import org.eclipse.jdt.internal.compiler.env.IBinaryType;
-import org.eclipse.jdt.internal.compiler.env.NameEnvironmentAnswer;
 import org.eclipse.jdt.internal.compiler.lookup.BinaryTypeBinding.ExternalAnnotationStatus;
 import org.eclipse.jdt.internal.compiler.util.SuffixConstants;
 import org.eclipse.jdt.internal.compiler.util.Util;
@@ -111,7 +111,7 @@ public class ClasspathMultiReleaseJar extends ClasspathJar {
 		return singletonModuleNameIf(this.packageCache.contains(qualifiedPackageName));
 	}
 	@Override
-	public NameEnvironmentAnswer findClass(char[] binaryFileName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName, boolean asBinaryOnly) {
+	public ClasspathAnswer findClass(char[] binaryFileName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName, boolean asBinaryOnly) {
 		if (!isPackage(qualifiedPackageName, moduleName)) return null; // most common case
 		if (this.releasePath != null) {
 			try {
@@ -152,10 +152,11 @@ public class ClasspathMultiReleaseJar extends ClasspathJar {
 							reader = new ExternalAnnotationDecorator(reader, null);
 						}
 					if (this.accessRuleSet == null)
-						return new NameEnvironmentAnswer(reader, null, modName);
-					return new NameEnvironmentAnswer(reader,
+						return new ClasspathAnswer(reader, null, modName, this);
+					return new ClasspathAnswer(reader,
 							this.accessRuleSet.getViolatedRestriction(fileNameWithoutExtension.toCharArray()),
-							modName);
+							modName,
+							this);
 				}
 			} catch (IOException | ClassFormatException e) {
 				// treat as if class file is missing

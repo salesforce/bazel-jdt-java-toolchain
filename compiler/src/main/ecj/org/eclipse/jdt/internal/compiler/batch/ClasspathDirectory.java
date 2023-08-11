@@ -17,25 +17,6 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.compiler.batch;
 
-import org.eclipse.jdt.core.compiler.CharOperation;
-import org.eclipse.jdt.internal.compiler.CompilationResult;
-import org.eclipse.jdt.internal.compiler.DefaultErrorHandlingPolicies;
-import org.eclipse.jdt.internal.compiler.ast.CompilationUnitDeclaration;
-import org.eclipse.jdt.internal.compiler.ast.TypeDeclaration;
-import org.eclipse.jdt.internal.compiler.classfmt.ClassFileReader;
-import org.eclipse.jdt.internal.compiler.classfmt.ClassFormatException;
-import org.eclipse.jdt.internal.compiler.classfmt.ExternalAnnotationProvider;
-import org.eclipse.jdt.internal.compiler.env.AccessRuleSet;
-import org.eclipse.jdt.internal.compiler.env.IModule;
-import org.eclipse.jdt.internal.compiler.env.NameEnvironmentAnswer;
-import org.eclipse.jdt.internal.compiler.impl.CompilerOptions;
-import org.eclipse.jdt.internal.compiler.lookup.TypeConstants;
-import org.eclipse.jdt.internal.compiler.parser.Parser;
-import org.eclipse.jdt.internal.compiler.parser.ScannerHelper;
-import org.eclipse.jdt.internal.compiler.problem.DefaultProblemFactory;
-import org.eclipse.jdt.internal.compiler.problem.ProblemReporter;
-import org.eclipse.jdt.internal.compiler.util.Util;
-
 import java.io.File;
 import java.io.FilenameFilter;
 import java.io.IOException;
@@ -52,6 +33,25 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Stream;
+
+import org.eclipse.jdt.core.compiler.CharOperation;
+import org.eclipse.jdt.internal.compiler.CompilationResult;
+import org.eclipse.jdt.internal.compiler.DefaultErrorHandlingPolicies;
+import org.eclipse.jdt.internal.compiler.ast.CompilationUnitDeclaration;
+import org.eclipse.jdt.internal.compiler.ast.TypeDeclaration;
+import org.eclipse.jdt.internal.compiler.batch.FileSystem.ClasspathAnswer;
+import org.eclipse.jdt.internal.compiler.classfmt.ClassFileReader;
+import org.eclipse.jdt.internal.compiler.classfmt.ClassFormatException;
+import org.eclipse.jdt.internal.compiler.classfmt.ExternalAnnotationProvider;
+import org.eclipse.jdt.internal.compiler.env.AccessRuleSet;
+import org.eclipse.jdt.internal.compiler.env.IModule;
+import org.eclipse.jdt.internal.compiler.impl.CompilerOptions;
+import org.eclipse.jdt.internal.compiler.lookup.TypeConstants;
+import org.eclipse.jdt.internal.compiler.parser.Parser;
+import org.eclipse.jdt.internal.compiler.parser.ScannerHelper;
+import org.eclipse.jdt.internal.compiler.problem.DefaultProblemFactory;
+import org.eclipse.jdt.internal.compiler.problem.ProblemReporter;
+import org.eclipse.jdt.internal.compiler.util.Util;
 
 @SuppressWarnings({"rawtypes", "unchecked"})
 public class ClasspathDirectory extends ClasspathLocation {
@@ -123,7 +123,7 @@ boolean doesFileExist(String fileName, String qualifiedPackageName) {
 public List fetchLinkedJars(FileSystem.ClasspathSectionProblemReporter problemReporter) {
 	return null;
 }
-private NameEnvironmentAnswer findClassInternal(char[] typeName, String qualifiedPackageName, String qualifiedBinaryFileName, boolean asBinaryOnly) {
+private ClasspathAnswer findClassInternal(char[] typeName, String qualifiedPackageName, String qualifiedBinaryFileName, boolean asBinaryOnly) {
 	if (!isPackage(qualifiedPackageName, null)) return null; // most common case TODO(SHMOD): use module name from this.module?
 	String fileName = new String(typeName);
 	boolean binaryExists = ((this.mode & BINARY) != 0) && doesFileExist(fileName + SUFFIX_STRING_class, qualifiedPackageName);
@@ -133,14 +133,14 @@ private NameEnvironmentAnswer findClassInternal(char[] typeName, String qualifie
 		CompilationUnit unit = new CompilationUnit(null, fullSourcePath, this.encoding, this.destinationPath);
 		unit.module = this.module == null ? null : this.module.name();
 		if (!binaryExists)
-			return new NameEnvironmentAnswer(unit,
-					fetchAccessRestriction(qualifiedBinaryFileName));
+			return new ClasspathAnswer(unit,
+					fetchAccessRestriction(qualifiedBinaryFileName), this);
 		String fullBinaryPath = this.path + qualifiedBinaryFileName;
 		long binaryModified = new File(fullBinaryPath).lastModified();
 		long sourceModified = new File(fullSourcePath).lastModified();
 		if (sourceModified > binaryModified)
-			return new NameEnvironmentAnswer(unit,
-					fetchAccessRestriction(qualifiedBinaryFileName));
+			return new ClasspathAnswer(unit,
+					fetchAccessRestriction(qualifiedBinaryFileName), this);
 	}
 	if (binaryExists) {
 		try {
@@ -154,10 +154,11 @@ private NameEnvironmentAnswer findClassInternal(char[] typeName, String qualifie
 			}
 			if (reader != null) {
 				char[] modName = reader.moduleName != null ? reader.moduleName : this.module != null ? this.module.name() : null;
-				return new NameEnvironmentAnswer(
+				return new ClasspathAnswer(
 						reader,
 						fetchAccessRestriction(qualifiedBinaryFileName),
-						modName);
+						modName,
+						this);
 			}
 		} catch (IOException | ClassFormatException e) {
 			// treat as if file is missing
@@ -165,7 +166,7 @@ private NameEnvironmentAnswer findClassInternal(char[] typeName, String qualifie
 	}
 	return null;
 }
-public NameEnvironmentAnswer findSecondaryInClass(char[] typeName, String qualifiedPackageName, String qualifiedBinaryFileName) {
+public ClasspathAnswer findSecondaryInClass(char[] typeName, String qualifiedPackageName, String qualifiedBinaryFileName) {
 	//"package-info" is a reserved class name and can never be a secondary type (it is much faster to stop the search here).
 	if(CharOperation.equals(TypeConstants.PACKAGE_INFO_NAME, typeName)) {
 		return null;
@@ -187,11 +188,11 @@ public boolean hasAnnotationFileFor(String qualifiedTypeName) {
 	return false;
 }
 @Override
-public NameEnvironmentAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName) {
+public ClasspathAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName) {
 	return findClass(typeName, qualifiedPackageName, moduleName, qualifiedBinaryFileName, false);
 }
 @Override
-public NameEnvironmentAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName, boolean asBinaryOnly) {
+public ClasspathAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName, boolean asBinaryOnly) {
 	if (File.separatorChar == '/')
       return findClassInternal(typeName, qualifiedPackageName, qualifiedBinaryFileName, asBinaryOnly);
 
@@ -241,7 +242,7 @@ private Hashtable<String, String> getSecondaryTypes(String qualifiedPackageName)
 	}
 	return packageEntry;
 }
-private NameEnvironmentAnswer findSourceSecondaryType(String typeName, String qualifiedPackageName, String qualifiedBinaryFileName) {
+private ClasspathAnswer findSourceSecondaryType(String typeName, String qualifiedPackageName, String qualifiedBinaryFileName) {
 
 	if (this.packageSecondaryTypes == null) this.packageSecondaryTypes = new Hashtable<>();
 	Hashtable<String, String> packageEntry = this.packageSecondaryTypes.get(qualifiedPackageName);
@@ -250,9 +251,9 @@ private NameEnvironmentAnswer findSourceSecondaryType(String typeName, String qu
 		this.packageSecondaryTypes.put(qualifiedPackageName, packageEntry);
 	}
 	String fileName = packageEntry.get(typeName);
-	return fileName != null ? new NameEnvironmentAnswer(new CompilationUnit(null,
+	return fileName != null ? new ClasspathAnswer(new CompilationUnit(null,
 			fileName, this.encoding, this.destinationPath),
-			fetchAccessRestriction(qualifiedBinaryFileName)) : null;
+			fetchAccessRestriction(qualifiedBinaryFileName), this) : null;
 }
 
 

@@ -117,7 +117,7 @@ public final class DependencyModule {
 
   /** Returns a plugin to be enabled in the compiler. */
   public BlazeJavaCompilerPlugin getPlugin() {
-	throw new IllegalStateException("not supported"); //return new StrictJavaDepsPlugin(this);
+	return new StrictJavaDepsPlugin(this);
   }
 
   /**

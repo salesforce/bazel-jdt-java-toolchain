@@ -32,12 +32,12 @@ import java.util.function.Function;
 
 import org.eclipse.jdt.core.compiler.CharOperation;
 import org.eclipse.jdt.internal.compiler.batch.FileSystem.Classpath;
+import org.eclipse.jdt.internal.compiler.batch.FileSystem.ClasspathAnswer;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFileConstants;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFileReader;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFormatException;
 import org.eclipse.jdt.internal.compiler.env.AccessRuleSet;
 import org.eclipse.jdt.internal.compiler.env.IModule;
-import org.eclipse.jdt.internal.compiler.env.NameEnvironmentAnswer;
 import org.eclipse.jdt.internal.compiler.util.CtSym;
 import org.eclipse.jdt.internal.compiler.util.JRTUtil;
 import org.eclipse.jdt.internal.compiler.util.Util;
@@ -55,11 +55,11 @@ public class ClasspathJep247Jdk12 extends ClasspathJep247 {
 		 return null;
 	}
 	@Override
-	public NameEnvironmentAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName) {
+	public ClasspathAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName) {
 		return findClass(typeName, qualifiedPackageName, moduleName, qualifiedBinaryFileName, false);
 	}
 	@Override
-	public NameEnvironmentAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName, boolean asBinaryOnly) {
+	public ClasspathAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName, boolean asBinaryOnly) {
 		if (!isPackage(qualifiedPackageName, moduleName))
 			return null; // most common case
 
@@ -98,7 +98,7 @@ public class ClasspathJep247Jdk12 extends ClasspathJep247 {
 			if (content != null) {
 				reader = new ClassFileReader(content, qualifiedBinaryFileName.toCharArray());
 				char[] modName = moduleName != null ? moduleName.toCharArray() : foundModName;
-				return new NameEnvironmentAnswer(reader, fetchAccessRestriction(qualifiedBinaryFileName), modName);
+				return new ClasspathAnswer(reader, fetchAccessRestriction(qualifiedBinaryFileName), modName, this);
 			}
 		} catch (ClassFormatException | IOException e) {
 			// continue
@@ -166,7 +166,7 @@ public class ClasspathJep247Jdk12 extends ClasspathJep247 {
 					if (!rel.contains(this.releaseInHex)) {
 						continue;
 					}
-					Files.walkFileTree(subdir, Collections.EMPTY_SET, 2, new FileVisitor<java.nio.file.Path>() {
+					Files.walkFileTree(subdir, Collections.emptySet(), 2, new FileVisitor<java.nio.file.Path>() {
 
 						@Override
 						public FileVisitResult preVisitDirectory(java.nio.file.Path dir, BasicFileAttributes attrs)

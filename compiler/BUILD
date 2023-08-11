@@ -35,6 +35,14 @@ java_library(
         "@rules_jdt_org_ow2_asm_asm_commons",
         "@rules_jdt_org_ow2_asm_asm_tree",
     ],
+    javacopts = [
+        "--add-exports=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED",
+        "--add-exports=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED",
+        "--add-exports=jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED",
+        "--add-exports=jdk.compiler/com.sun.tools.javac.resources=ALL-UNNAMED",
+        "--add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED",
+        "--add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED",
+    ],
     visibility = ["//:__subpackages__"],
 )
 

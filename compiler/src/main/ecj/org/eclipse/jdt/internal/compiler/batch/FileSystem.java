@@ -39,19 +39,24 @@ import org.eclipse.jdt.internal.compiler.CompilationResult;
 import org.eclipse.jdt.internal.compiler.DefaultErrorHandlingPolicies;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFileReader;
 import org.eclipse.jdt.internal.compiler.classfmt.ExternalAnnotationDecorator;
+import org.eclipse.jdt.internal.compiler.env.AccessRestriction;
 import org.eclipse.jdt.internal.compiler.env.AccessRuleSet;
-import org.eclipse.jdt.internal.compiler.env.IModulePathEntry;
+import org.eclipse.jdt.internal.compiler.env.IBinaryType;
+import org.eclipse.jdt.internal.compiler.env.ICompilationUnit;
 import org.eclipse.jdt.internal.compiler.env.IModule;
 import org.eclipse.jdt.internal.compiler.env.IModuleAwareNameEnvironment;
-import org.eclipse.jdt.internal.compiler.env.NameEnvironmentAnswer;
-import org.eclipse.jdt.internal.compiler.lookup.ModuleBinding;
-import org.eclipse.jdt.internal.compiler.parser.Parser;
-import org.eclipse.jdt.internal.compiler.problem.DefaultProblemFactory;
-import org.eclipse.jdt.internal.compiler.problem.ProblemReporter;
+import org.eclipse.jdt.internal.compiler.env.IModulePathEntry;
+import org.eclipse.jdt.internal.compiler.env.ISourceType;
 import org.eclipse.jdt.internal.compiler.env.IUpdatableModule;
 import org.eclipse.jdt.internal.compiler.env.IUpdatableModule.UpdateKind;
 import org.eclipse.jdt.internal.compiler.env.IUpdatableModule.UpdatesByKind;
+import org.eclipse.jdt.internal.compiler.env.NameEnvironmentAnswer;
 import org.eclipse.jdt.internal.compiler.impl.CompilerOptions;
+import org.eclipse.jdt.internal.compiler.lookup.ModuleBinding;
+import org.eclipse.jdt.internal.compiler.lookup.ReferenceBinding;
+import org.eclipse.jdt.internal.compiler.parser.Parser;
+import org.eclipse.jdt.internal.compiler.problem.DefaultProblemFactory;
+import org.eclipse.jdt.internal.compiler.problem.ProblemReporter;
 import org.eclipse.jdt.internal.compiler.util.JRTUtil;
 import org.eclipse.jdt.internal.compiler.util.SuffixConstants;
 import org.eclipse.jdt.internal.compiler.util.Util;
@@ -60,6 +65,43 @@ public class FileSystem implements IModuleAwareNameEnvironment, SuffixConstants 
 
 	// Keep the type as ArrayList and not List as there are clients that are already written to expect ArrayList.
 	public static ArrayList<FileSystem.Classpath> EMPTY_CLASSPATH = new ArrayList<>();
+
+	public static class ClasspathAnswer extends NameEnvironmentAnswer {
+
+		public final Classpath source;
+
+		public ClasspathAnswer(IBinaryType binaryType, AccessRestriction accessRestriction, char[] module, Classpath source) {
+			super(binaryType, accessRestriction, module);
+			this.source = source;
+		}
+
+		public ClasspathAnswer(IBinaryType binaryType, AccessRestriction accessRestriction, Classpath source) {
+			super(binaryType, accessRestriction);
+			this.source = source;
+		}
+
+		public ClasspathAnswer(ICompilationUnit compilationUnit, AccessRestriction accessRestriction, char[] module, Classpath source) {
+			super(compilationUnit, accessRestriction, module);
+			this.source = source;
+		}
+
+		public ClasspathAnswer(ICompilationUnit compilationUnit, AccessRestriction accessRestriction, Classpath source) {
+			super(compilationUnit, accessRestriction);
+			this.source = source;
+		}
+
+		public ClasspathAnswer(ISourceType[] sourceTypes, AccessRestriction accessRestriction,
+				String externalAnnotationPath, char[] module, Classpath source) {
+			super(sourceTypes, accessRestriction, externalAnnotationPath, module);
+			this.source = source;
+		}
+
+		public ClasspathAnswer(ReferenceBinding binding, ModuleBinding module, Classpath source) {
+			super(binding, module);
+			this.source = source;
+		}
+
+	}
 
 	/**
 	 * A <code>Classpath</code>, even though an IModuleLocation, can represent a plain
@@ -70,8 +112,8 @@ public class FileSystem implements IModuleAwareNameEnvironment, SuffixConstants 
 	 */
 	public interface Classpath extends IModulePathEntry {
 		char[][][] findTypeNames(String qualifiedPackageName, String moduleName);
-		NameEnvironmentAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName);
-		NameEnvironmentAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName, boolean asBinaryOnly);
+		ClasspathAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName);
+		ClasspathAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName, boolean asBinaryOnly);
 		boolean isPackage(String qualifiedPackageName, /*@Nullable*/String moduleName);
 		default boolean hasModule() { return getModule() != null; }
 		default boolean hasCUDeclaringPackage(String qualifiedPackageName, Function<CompilationUnit, String> pkgNameExtractor) {
@@ -167,6 +209,8 @@ public class FileSystem implements IModuleAwareNameEnvironment, SuffixConstants 
 	protected boolean annotationsFromClasspath; // should annotation files be read from the classpath (vs. explicit separate path)?
 	private static HashMap<File, Classpath> JRT_CLASSPATH_CACHE = null;
 	protected Map<String,Classpath> moduleLocations = new HashMap<>();
+
+	public Consumer<ClasspathAnswer> nameEnvironmentListener = null; // listener for findType* methods
 
 	/** Tasks resulting from --add-reads or --add-exports command line options. */
 	Map<String,UpdatesByKind> moduleUpdates = new HashMap<>();
@@ -429,8 +473,8 @@ private static String convertPathSeparators(String path) {
 		? path.replace('\\', '/')
 		 : path.replace('/', '\\');
 }
-private NameEnvironmentAnswer findClass(String qualifiedTypeName, char[] typeName, boolean asBinaryOnly, /*NonNull*/char[] moduleName) {
-	NameEnvironmentAnswer answer = internalFindClass(qualifiedTypeName, typeName, asBinaryOnly, moduleName);
+private ClasspathAnswer findClass(String qualifiedTypeName, char[] typeName, boolean asBinaryOnly, /*NonNull*/char[] moduleName) {
+	ClasspathAnswer answer = internalFindClass(qualifiedTypeName, typeName, asBinaryOnly, moduleName);
 	if (this.annotationsFromClasspath && answer != null && answer.getBinaryType() instanceof ClassFileReader) {
 		for (int i = 0, length = this.classpaths.length; i < length; i++) {
 			Classpath classpathEntry = this.classpaths[i];
@@ -445,6 +489,7 @@ private NameEnvironmentAnswer findClass(String qualifiedTypeName, char[] typeNam
 					}
 					answer.setBinaryType(ExternalAnnotationDecorator.create(answer.getBinaryType(), classpathEntry.getPath(),
 							qualifiedTypeName, zip));
+					if (nameEnvironmentListener != null) nameEnvironmentListener.accept(answer);
 					return answer;
 				} catch (IOException e) {
 					// ignore broken entry, keep searching
@@ -459,9 +504,10 @@ private NameEnvironmentAnswer findClass(String qualifiedTypeName, char[] typeNam
 		// globally configured (annotationsFromClasspath), but no .eea found, decorate in order to answer NO_EEA_FILE:
 		answer.setBinaryType(new ExternalAnnotationDecorator(answer.getBinaryType(), null));
 	}
+	if (nameEnvironmentListener != null && answer != null) nameEnvironmentListener.accept(answer);
 	return answer;
 }
-private NameEnvironmentAnswer internalFindClass(String qualifiedTypeName, char[] typeName, boolean asBinaryOnly, /*NonNull*/char[] moduleName) {
+private ClasspathAnswer internalFindClass(String qualifiedTypeName, char[] typeName, boolean asBinaryOnly, /*NonNull*/char[] moduleName) {
 	if (this.knownFileNames.contains(qualifiedTypeName)) return null; // looking for a file which we know was provided at the beginning of the compilation
 
 	String qualifiedBinaryFileName = qualifiedTypeName + SUFFIX_STRING_class;
@@ -483,12 +529,12 @@ private NameEnvironmentAnswer internalFindClass(String qualifiedTypeName, char[]
 		return null;
 	}
 	String qp2 = File.separatorChar == '/' ? qualifiedPackageName : qualifiedPackageName.replace('/', File.separatorChar);
-	NameEnvironmentAnswer suggestedAnswer = null;
+	ClasspathAnswer suggestedAnswer = null;
 	if (qualifiedPackageName == qp2) {
 		for (int i = 0, length = this.classpaths.length; i < length; i++) {
 			if (!strategy.matches(this.classpaths[i], Classpath::hasModule))
 				continue;
-			NameEnvironmentAnswer answer = this.classpaths[i].findClass(typeName, qualifiedPackageName, null, qualifiedBinaryFileName, asBinaryOnly);
+			ClasspathAnswer answer = this.classpaths[i].findClass(typeName, qualifiedPackageName, null, qualifiedBinaryFileName, asBinaryOnly);
 			if (answer != null) {
 				if (answer.moduleName() != null && !this.moduleLocations.containsKey(String.valueOf(answer.moduleName())))
 					continue; // type belongs to an unobservable module
@@ -506,7 +552,7 @@ private NameEnvironmentAnswer internalFindClass(String qualifiedTypeName, char[]
 			Classpath p = this.classpaths[i];
 			if (!strategy.matches(p, Classpath::hasModule))
 				continue;
-			NameEnvironmentAnswer answer = !(p instanceof ClasspathDirectory)
+			ClasspathAnswer answer = !(p instanceof ClasspathDirectory)
 				? p.findClass(typeName, qualifiedPackageName, null, qualifiedBinaryFileName, asBinaryOnly)
 				: p.findClass(typeName, qp2, null, qb2, asBinaryOnly);
 			if (answer != null) {
@@ -525,7 +571,7 @@ private NameEnvironmentAnswer internalFindClass(String qualifiedTypeName, char[]
 }
 
 @Override
-public NameEnvironmentAnswer findType(char[][] compoundName, char[] moduleName) {
+public ClasspathAnswer findType(char[][] compoundName, char[] moduleName) {
 	if (compoundName != null)
 		return findClass(
 			new String(CharOperation.concatWith(compoundName, '/')),
@@ -578,7 +624,7 @@ public char[][][] findTypeNames(char[][] packageName) {
 }
 
 @Override
-public NameEnvironmentAnswer findType(char[] typeName, char[][] packageName, char[] moduleName) {
+public ClasspathAnswer findType(char[] typeName, char[][] packageName, char[] moduleName) {
 	if (typeName != null)
 		return findClass(
 			new String(CharOperation.concatWith(packageName, typeName, '/')),

@@ -30,16 +30,16 @@ import java.util.zip.ZipFile;
 
 import org.eclipse.jdt.core.compiler.CharOperation;
 import org.eclipse.jdt.internal.compiler.batch.FileSystem.Classpath;
+import org.eclipse.jdt.internal.compiler.batch.FileSystem.ClasspathAnswer;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFileReader;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFormatException;
 import org.eclipse.jdt.internal.compiler.classfmt.ExternalAnnotationDecorator;
 import org.eclipse.jdt.internal.compiler.classfmt.ExternalAnnotationProvider;
 import org.eclipse.jdt.internal.compiler.env.AccessRuleSet;
-import org.eclipse.jdt.internal.compiler.env.IModule;
-import org.eclipse.jdt.internal.compiler.env.NameEnvironmentAnswer;
 import org.eclipse.jdt.internal.compiler.env.IBinaryType;
-import org.eclipse.jdt.internal.compiler.lookup.TypeConstants;
+import org.eclipse.jdt.internal.compiler.env.IModule;
 import org.eclipse.jdt.internal.compiler.lookup.BinaryTypeBinding.ExternalAnnotationStatus;
+import org.eclipse.jdt.internal.compiler.lookup.TypeConstants;
 import org.eclipse.jdt.internal.compiler.util.ManifestAnalyzer;
 import org.eclipse.jdt.internal.compiler.util.SuffixConstants;
 import org.eclipse.jdt.internal.compiler.util.Util;
@@ -111,11 +111,11 @@ public List<Classpath> fetchLinkedJars(FileSystem.ClasspathSectionProblemReporte
 	}
 }
 @Override
-public NameEnvironmentAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName) {
+public ClasspathAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName) {
 	return findClass(typeName, qualifiedPackageName, moduleName, qualifiedBinaryFileName, false);
 }
 @Override
-public NameEnvironmentAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName, boolean asBinaryOnly) {
+public ClasspathAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName, boolean asBinaryOnly) {
 	if (!isPackage(qualifiedPackageName, moduleName))
 		return null; // most common case
 
@@ -150,7 +150,7 @@ public NameEnvironmentAnswer findClass(char[] typeName, String qualifiedPackageN
 				// location is configured for external annotations, but no .eea found, decorate in order to answer NO_EEA_FILE:
 				reader = new ExternalAnnotationDecorator(reader, null);
 			}
-			return new NameEnvironmentAnswer(reader, fetchAccessRestriction(qualifiedBinaryFileName), modName);
+			return new ClasspathAnswer(reader, fetchAccessRestriction(qualifiedBinaryFileName), modName, this);
 		}
 	} catch (ClassFormatException | IOException e) {
 		// treat as if class file is missing

@@ -14,12 +14,12 @@
 package org.eclipse.jdt.internal.compiler.batch;
 
 import java.io.File;
-import java.io.InputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.zip.ZipEntry;
 
+import org.eclipse.jdt.internal.compiler.batch.FileSystem.ClasspathAnswer;
 import org.eclipse.jdt.internal.compiler.env.AccessRuleSet;
-import org.eclipse.jdt.internal.compiler.env.NameEnvironmentAnswer;
 import org.eclipse.jdt.internal.compiler.util.Util;
 
 public class ClasspathSourceJar extends ClasspathJar {
@@ -33,7 +33,7 @@ public class ClasspathSourceJar extends ClasspathJar {
 	}
 
 	@Override
-	public NameEnvironmentAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName, boolean asBinaryOnly) {
+	public ClasspathAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName, boolean asBinaryOnly) {
 		if (!isPackage(qualifiedPackageName, moduleName))
 			return null; // most common case
 
@@ -55,9 +55,10 @@ public class ClasspathSourceJar extends ClasspathJar {
 					this.encoding,
 					this.destinationPath);
 				compilationUnit.module = this.module == null ? null : this.module.name();
-				return new NameEnvironmentAnswer(
+				return new ClasspathAnswer(
 					compilationUnit,
-					fetchAccessRestriction(qualifiedBinaryFileName));
+					fetchAccessRestriction(qualifiedBinaryFileName),
+					this);
 			} catch (IOException e) {
 				// treat as if source file is missing
 			}

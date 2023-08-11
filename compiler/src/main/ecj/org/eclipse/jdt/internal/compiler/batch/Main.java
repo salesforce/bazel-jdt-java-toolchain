@@ -3863,7 +3863,7 @@ protected void handleWarningToken(String token, boolean isEnabling) {
 protected void handleErrorToken(String token, boolean isEnabling) {
 	handleErrorOrWarningToken(token, isEnabling, ProblemSeverities.Error);
 }
-private void setSeverity(String compilerOptions, int severity, boolean isEnabling) {
+protected void setSeverity(String compilerOptions, int severity, boolean isEnabling) {
 	if (isEnabling) {
 		switch(severity) {
 			case ProblemSeverities.Error :

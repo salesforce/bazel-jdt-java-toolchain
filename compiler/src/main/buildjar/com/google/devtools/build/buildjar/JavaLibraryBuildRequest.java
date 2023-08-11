@@ -176,7 +176,7 @@ public final class JavaLibraryBuildRequest {
     this.processingModule = processingBuilder.build();
 
     ImmutableList.Builder<BlazeJavaCompilerPlugin> pluginsBuilder =
-        ImmutableList.<BlazeJavaCompilerPlugin>builder();//.add(dependencyModule.getPlugin());
+        ImmutableList.<BlazeJavaCompilerPlugin>builder().add(dependencyModule.getPlugin());
     processingModule.registerPlugin(pluginsBuilder);
     pluginsBuilder.addAll(extraPlugins);
     this.plugins = pluginsBuilder.build();

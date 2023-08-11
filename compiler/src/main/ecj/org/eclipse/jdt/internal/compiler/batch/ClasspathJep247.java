@@ -32,12 +32,12 @@ import java.util.Set;
 
 import org.eclipse.jdt.core.compiler.CharOperation;
 import org.eclipse.jdt.internal.compiler.batch.FileSystem.Classpath;
+import org.eclipse.jdt.internal.compiler.batch.FileSystem.ClasspathAnswer;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFileConstants;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFileReader;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFormatException;
 import org.eclipse.jdt.internal.compiler.env.AccessRuleSet;
 import org.eclipse.jdt.internal.compiler.env.IModule;
-import org.eclipse.jdt.internal.compiler.env.NameEnvironmentAnswer;
 import org.eclipse.jdt.internal.compiler.impl.CompilerOptions;
 import org.eclipse.jdt.internal.compiler.util.CtSym;
 import org.eclipse.jdt.internal.compiler.util.JRTUtil;
@@ -67,11 +67,11 @@ public class ClasspathJep247 extends ClasspathJrt {
 		 return null;
 	}
 	@Override
-	public NameEnvironmentAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName) {
+	public ClasspathAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName) {
 		return findClass(typeName, qualifiedPackageName, moduleName, qualifiedBinaryFileName, false);
 	}
 	@Override
-	public NameEnvironmentAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName, boolean asBinaryOnly) {
+	public ClasspathAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName, boolean asBinaryOnly) {
 		if (!isPackage(qualifiedPackageName, moduleName))
 			return null; // most common case
 
@@ -95,7 +95,7 @@ public class ClasspathJep247 extends ClasspathJrt {
 			if (content != null) {
 				reader = new ClassFileReader(content, qualifiedBinaryFileName.toCharArray());
 				char[] modName = moduleName != null ? moduleName.toCharArray() : null;
-				return new NameEnvironmentAnswer(reader, fetchAccessRestriction(qualifiedBinaryFileName), modName);
+				return new ClasspathAnswer(reader, fetchAccessRestriction(qualifiedBinaryFileName), modName, this);
 			}
 		} catch (ClassFormatException | IOException e) {
 			// continue

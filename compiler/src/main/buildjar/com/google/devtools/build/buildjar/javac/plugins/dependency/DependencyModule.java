@@ -88,6 +88,7 @@ public final class DependencyModule {
   private final FixMessage fixMessage;
   private final Set<String> exemptGenerators;
   private final Set<String> packages;
+  private final boolean writeEmptyJdeps;
 
   DependencyModule(
       StrictJavaDeps strictJavaDeps,
@@ -99,7 +100,8 @@ public final class DependencyModule {
       String targetLabel,
       Path outputDepsProtoFile,
       FixMessage fixMessage,
-      Set<String> exemptGenerators) {
+      Set<String> exemptGenerators,
+      boolean writeEmptyJdeps) {
     this.strictJavaDeps = strictJavaDeps;
     this.fixDepsTool = fixDepsTool;
     this.directJars = directJars;
@@ -112,6 +114,7 @@ public final class DependencyModule {
     this.platformJars = platformJars;
     this.fixMessage = fixMessage;
     this.exemptGenerators = exemptGenerators;
+    this.writeEmptyJdeps = writeEmptyJdeps;
     this.packages = new HashSet<>();
   }
 
@@ -135,7 +138,21 @@ public final class DependencyModule {
 
     try (BufferedOutputStream out =
         new BufferedOutputStream(Files.newOutputStream(outputDepsProtoFile))) {
-      buildDependenciesProto(classpath, successful, requiresFallback).writeTo(out);
+      Dependencies dependencies;
+      if (writeEmptyJdeps) {
+        Dependencies.Builder deps = Dependencies.newBuilder();
+        if (targetLabel != null) {
+          deps.setRuleLabel(targetLabel);
+        }
+        deps.setSuccess(successful);
+        if (requiresFallback) {
+          deps.setRequiresReducedClasspathFallback(true);
+        }
+        dependencies = deps.build();
+      } else {
+        dependencies = buildDependenciesProto(classpath, successful, requiresFallback);
+      }
+      dependencies.writeTo(out);
     } catch (IOException ex) {
       throw new IOException("Cannot write dependencies to " + outputDepsProtoFile, ex);
     }
@@ -340,6 +357,7 @@ public final class DependencyModule {
     private boolean strictClasspathMode = false;
     private FixMessage fixMessage = new DefaultFixMessage();
     private final Set<String> exemptGenerators = new LinkedHashSet<>(SJD_EXEMPT_PROCESSORS);
+    private boolean writeEmptyJdeps = false;
 
     private static class DefaultFixMessage implements FixMessage {
       @Override
@@ -376,7 +394,8 @@ public final class DependencyModule {
           targetLabel,
           outputDepsProtoFile,
           fixMessage,
-          exemptGenerators);
+          exemptGenerators,
+          writeEmptyJdeps);
     }
 
     /**
@@ -476,6 +495,11 @@ public final class DependencyModule {
      */
     public Builder addExemptGenerator(String exemptGenerator) {
       exemptGenerators.add(exemptGenerator);
+      return this;
+    }
+
+    public Builder setWriteEmptyJdeps() {
+      this.writeEmptyJdeps = true;
       return this;
     }
   }

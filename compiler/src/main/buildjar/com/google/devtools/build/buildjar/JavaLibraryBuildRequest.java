@@ -164,6 +164,10 @@ public final class JavaLibraryBuildRequest {
     if (optionsParser.getTargetLabel() != null) {
       depsBuilder.setTargetLabel(optionsParser.getTargetLabel());
     }
+    this.javacOpts = ImmutableList.copyOf(optionsParser.getJavacOpts());
+    if (this.javacOpts.contains("-Xecj_write_empty_jdeps")) {
+      depsBuilder.setWriteEmptyJdeps();
+    }
     this.dependencyModule = depsBuilder.build();
     this.sourceGenDir =
         deriveDirectory(optionsParser.getTargetLabel(), optionsParser.getOutputJar(), "_sources");
@@ -210,7 +214,6 @@ public final class JavaLibraryBuildRequest {
           throw new AssertionError("unsupported post-processor " + entry.getKey());
       }
     }
-    this.javacOpts = ImmutableList.copyOf(optionsParser.getJavacOpts());
     this.generatedSourcesOutputJar = asPath(optionsParser.getGeneratedSourcesOutputJar());
     this.generatedClassOutputJar = asPath(optionsParser.getManifestProtoPath());
     this.targetLabel = optionsParser.getTargetLabel();

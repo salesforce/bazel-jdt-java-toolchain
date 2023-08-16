@@ -66,6 +66,25 @@ import com.google.devtools.build.lib.view.proto.Deps.Dependency;
  */
 public class BlazeEcjMain {
 
+	static enum UsedDependencyCollectionMode { All, DirectOnly, None;
+
+		static UsedDependencyCollectionMode fromOptionValue(String value) {
+			if (value != null) {
+				switch (value) {
+				case "all":
+					return All;
+				case "direct_only":
+					return DirectOnly;
+				case "none":
+					return None;
+				default:
+					throw new IllegalArgumentException("Unknown option value for -Xecj_collect_used_deps: " + value);
+				}
+			}
+			return All; // default to all
+		}
+	}
+
 	static class BlazeEclipseBatchCompiler extends Main {
 
 		final AnnotationProcessingModule processingModule;
@@ -76,11 +95,13 @@ public class BlazeEcjMain {
 		final ImmutableSet<Path> directJars;
 		final Map<Path, Dependency> directDependenciesMap;
 		final Map<Path, Dependency> noneDirectDependenciesMap;
+		final UsedDependencyCollectionMode usedDependencyCollectionMode;
 
 		public BlazeEclipseBatchCompiler(PrintWriter outWriter, PrintWriter errWriter,
-				ImmutableList<BlazeJavaCompilerPlugin> plugins, String sandboxPathPrefix, Map<Path, Path> sourceFilesByAbsoluteOrCanonicalPath) {
+				ImmutableList<BlazeJavaCompilerPlugin> plugins, String sandboxPathPrefix, Map<Path, Path> sourceFilesByAbsoluteOrCanonicalPath, UsedDependencyCollectionMode usedDependencyCollectionMode) {
 			super(outWriter, errWriter, false /* systemExitWhenFinished */, null /* customDefaultOptions */,
 					null /* compilationProgress */);
+			this.usedDependencyCollectionMode = usedDependencyCollectionMode;
 			this.sandboxPathPrefix = Path.of(sandboxPathPrefix);
 			this.sourceFilesByAbsoluteOrCanonicalPath = sourceFilesByAbsoluteOrCanonicalPath;
 			this.processingModule = ((AnnotationProcessingPlugin) plugins.stream()
@@ -181,31 +202,33 @@ public class BlazeEcjMain {
 						jarPath = sandboxPathPrefix.relativize(jarPath);
 
 						// update the dependency proto
-						if(directJars.contains(jarPath)) {
-							if (!directDependenciesMap.containsKey(jarPath)) {
-								Dependency dep =
-										Dependency.newBuilder()
-										// Path.toString uses the platform separator (`\` on Windows) which may not
-										// match the format in params files (which currently always use `/`, see
-										// bazelbuild/bazel#4108). JavaBuilder should always parse Path strings into
-										// java.nio.file.Paths before comparing them.
-										.setPath(jarPath.toString())
-										.setKind(Dependency.Kind.EXPLICIT)
-										.build();
-								directDependenciesMap.put(jarPath, dep);
-							}
-						} else {
-							if (!noneDirectDependenciesMap.containsKey(jarPath)) {
-								Dependency dep =
-										Dependency.newBuilder()
-										// Path.toString uses the platform separator (`\` on Windows) which may not
-										// match the format in params files (which currently always use `/`, see
-										// bazelbuild/bazel#4108). JavaBuilder should always parse Path strings into
-										// java.nio.file.Paths before comparing them.
-										.setPath(jarPath.toString())
-										.setKind(Dependency.Kind.IMPLICIT)
-										.build();
-								noneDirectDependenciesMap.put(jarPath, dep);
+						if(usedDependencyCollectionMode != UsedDependencyCollectionMode.None) {
+							if(directJars.contains(jarPath)) {
+								if ((usedDependencyCollectionMode == UsedDependencyCollectionMode.All || usedDependencyCollectionMode == UsedDependencyCollectionMode.DirectOnly) && !directDependenciesMap.containsKey(jarPath)) {
+									Dependency dep =
+											Dependency.newBuilder()
+											// Path.toString uses the platform separator (`\` on Windows) which may not
+											// match the format in params files (which currently always use `/`, see
+											// bazelbuild/bazel#4108). JavaBuilder should always parse Path strings into
+											// java.nio.file.Paths before comparing them.
+											.setPath(jarPath.toString())
+											.setKind(Dependency.Kind.EXPLICIT)
+											.build();
+									directDependenciesMap.put(jarPath, dep);
+								}
+							} else {
+								if (usedDependencyCollectionMode == UsedDependencyCollectionMode.All && !noneDirectDependenciesMap.containsKey(jarPath)) {
+									Dependency dep =
+											Dependency.newBuilder()
+											// Path.toString uses the platform separator (`\` on Windows) which may not
+											// match the format in params files (which currently always use `/`, see
+											// bazelbuild/bazel#4108). JavaBuilder should always parse Path strings into
+											// java.nio.file.Paths before comparing them.
+											.setPath(jarPath.toString())
+											.setKind(Dependency.Kind.IMPLICIT)
+											.build();
+									noneDirectDependenciesMap.put(jarPath, dep);
+								}
 							}
 						}
 					}
@@ -258,8 +281,7 @@ public class BlazeEcjMain {
     StringWriter errOutput = new StringWriter();
     PrintWriter errWriter = new PrintWriter(errOutput);
 
-
-    BlazeEclipseBatchCompiler compiler = new BlazeEclipseBatchCompiler(errWriter, errWriter, arguments.plugins(), sandboxPathPrefix, sourceFilesByAbsoluteOrCanonicalPath);
+    BlazeEclipseBatchCompiler compiler = new BlazeEclipseBatchCompiler(errWriter, errWriter, arguments.plugins(), sandboxPathPrefix, sourceFilesByAbsoluteOrCanonicalPath, UsedDependencyCollectionMode.fromOptionValue(getJavacOptionValue(arguments.javacOptions(), "-Xecj_collect_used_deps")));
 
     List<String> ecjArguments = new ArrayList<>();
     setLocations(ecjArguments, arguments, compiler.dependencyModule);
@@ -327,6 +349,21 @@ public class BlazeEcjMain {
         output,
         builder.build());
   }
+
+private static String getJavacOptionValue(List<String> javacOptions, String optionName) {
+	for (int i = 0; i < javacOptions.size(); i++) {
+    	String option = javacOptions.get(i);
+    	if(option.startsWith(optionName)) {
+    		int separatorPos = option.indexOf('=');
+    		if(separatorPos == -1 && javacOptions.size() > i+1) {
+    			return javacOptions.get(i+1);
+    		} else {
+    			return option.substring(separatorPos+1).trim();
+    		}
+    	}
+	}
+	return null;
+}
 
 	private static String detectWorkingDirPathPrefix(BlazeJavacArguments arguments) throws IOException {
 		// since the JDT compiler is executed from within the sandbox, the absolute path will be resolved to the working directory

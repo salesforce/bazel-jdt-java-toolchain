@@ -251,7 +251,7 @@ public class BlazeEcjMain {
     	try {
     		sourceFilesByAbsoluteOrCanonicalPath.put(sourceFile.toRealPath(), sourceFile);
     	} catch (IOException e) {
-    		return BlazeJavacResult.error(e.getMessage());
+    		return BlazeJavacResult.error(e.toString());
     	}
     }
 

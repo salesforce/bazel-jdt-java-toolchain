@@ -17,10 +17,14 @@ package com.google.devtools.build.buildjar.javac;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static com.google.common.collect.MoreCollectors.toOptional;
 import static java.lang.String.format;
+import static java.nio.file.Files.newInputStream;
 import static java.util.Comparator.comparing;
 import static java.util.stream.Collectors.joining;
+import static java.util.stream.Collectors.toMap;
 
+import java.io.BufferedInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.nio.file.Path;
@@ -30,6 +34,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 
 import javax.tools.Diagnostic;
@@ -66,7 +71,8 @@ import com.google.devtools.build.lib.view.proto.Deps.Dependency;
  */
 public class BlazeEcjMain {
 
-	static enum UsedDependencyCollectionMode { All, DirectOnly, None;
+	static enum UsedDependencyCollectionMode {
+		All, DirectOnly, None;
 
 		static UsedDependencyCollectionMode fromOptionValue(String value) {
 			if (value != null) {
@@ -98,7 +104,10 @@ public class BlazeEcjMain {
 		final UsedDependencyCollectionMode usedDependencyCollectionMode;
 
 		public BlazeEclipseBatchCompiler(PrintWriter outWriter, PrintWriter errWriter,
-				ImmutableList<BlazeJavaCompilerPlugin> plugins, String sandboxPathPrefix, Map<Path, Path> sourceFilesByAbsoluteOrCanonicalPath, UsedDependencyCollectionMode usedDependencyCollectionMode) {
+				ImmutableList<BlazeJavaCompilerPlugin> plugins, String sandboxPathPrefix,
+				Map<Path, Path> sourceFilesByAbsoluteOrCanonicalPath,
+				UsedDependencyCollectionMode usedDependencyCollectionMode,
+				Path problemSeverityPreferences) {
 			super(outWriter, errWriter, false /* systemExitWhenFinished */, null /* customDefaultOptions */,
 					null /* compilationProgress */);
 			this.usedDependencyCollectionMode = usedDependencyCollectionMode;
@@ -106,10 +115,15 @@ public class BlazeEcjMain {
 			this.sourceFilesByAbsoluteOrCanonicalPath = sourceFilesByAbsoluteOrCanonicalPath;
 			this.processingModule = ((AnnotationProcessingPlugin) plugins.stream()
 					.filter(AnnotationProcessingPlugin.class::isInstance).findAny().get()).getProcessingModule();
-			this.dependencyModule = ((StrictJavaDepsPlugin) plugins.stream().filter(StrictJavaDepsPlugin.class::isInstance).findAny().get()).getDependencyModule();
+			this.dependencyModule = ((StrictJavaDepsPlugin) plugins.stream()
+					.filter(StrictJavaDepsPlugin.class::isInstance).findAny().get()).getDependencyModule();
 			this.directJars = dependencyModule.directJars();
 			this.directDependenciesMap = dependencyModule.getExplicitDependenciesMap();
 			this.noneDirectDependenciesMap = dependencyModule.getImplicitDependenciesMap();
+
+			if(problemSeverityPreferences != null) {
+				this.options.putAll(loadProblemSeverityPreferences(problemSeverityPreferences));
+			}
 
 			switch (dependencyModule.getStrictJavaDeps()) {
 			case ERROR:
@@ -149,7 +163,8 @@ public class BlazeEcjMain {
 
 		@Override
 		public FileSystem getLibraryAccess() {
-			// we use this to collect information about all used dependencies during compilation
+			// we use this to collect information about all used dependencies during
+			// compilation
 			FileSystem nameEnvironment = super.getLibraryAccess();
 			nameEnvironment.nameEnvironmentListener = this::recordNameEnvironmentAnswer;
 			return nameEnvironment;
@@ -159,9 +174,10 @@ public class BlazeEcjMain {
 			CompilationUnit.Builder builder = CompilationUnit.newBuilder();
 
 			if (result.getFileName() != null) {
-				// paths we get from ECJ are absolute, we have to translate them back to the exec-root relative path
+				// paths we get from ECJ are absolute, we have to translate them back to the
+				// exec-root relative path
 				Path path = Path.of(new String(result.getFileName()));
-				if(sourceFilesByAbsoluteOrCanonicalPath.containsKey(path))
+				if (sourceFilesByAbsoluteOrCanonicalPath.containsKey(path))
 					path = sourceFilesByAbsoluteOrCanonicalPath.get(path);
 				else
 					path = sandboxPathPrefix.relativize(path);
@@ -178,10 +194,10 @@ public class BlazeEcjMain {
 
 			if (result.compiledTypes != null) {
 				for (Object typename : result.compiledTypes.keySet()) {
-					String typeName = new String((char[])typename);
+					String typeName = new String((char[]) typename);
 					int lastSlashPos = typeName.lastIndexOf('/');
-					if(lastSlashPos > -1) {
-						typeName = typeName.substring(lastSlashPos+1);
+					if (lastSlashPos > -1) {
+						typeName = typeName.substring(lastSlashPos + 1);
 					}
 					builder.addTopLevel(typeName.replace('$', '.'));
 				}
@@ -192,41 +208,39 @@ public class BlazeEcjMain {
 
 		protected void recordNameEnvironmentAnswer(ClasspathAnswer classpathAnswer) {
 			Classpath classpath = classpathAnswer.source;
-			if(classpath instanceof ClasspathLocation) {
-				String jar = ((ClasspathLocation)classpath).getPath();
-				if(jar != null && jar.endsWith(".jar")) {
+			if (classpath instanceof ClasspathLocation) {
+				String jar = ((ClasspathLocation) classpath).getPath();
+				if (jar != null && jar.endsWith(".jar")) {
 					Path jarPath = Path.of(jar);
-					if(processedJars.add(jarPath)) {
+					if (processedJars.add(jarPath)) {
 						// we assume jars come from the execroot; JDT uses absolute/canonical paths
-						// therefore we translate the path back into an execroot relative path for Bazel to be happy
+						// therefore we translate the path back into an execroot relative path for Bazel
+						// to be happy
 						jarPath = sandboxPathPrefix.relativize(jarPath);
 
 						// update the dependency proto
-						if(usedDependencyCollectionMode != UsedDependencyCollectionMode.None) {
-							if(directJars.contains(jarPath)) {
-								if ((usedDependencyCollectionMode == UsedDependencyCollectionMode.All || usedDependencyCollectionMode == UsedDependencyCollectionMode.DirectOnly) && !directDependenciesMap.containsKey(jarPath)) {
-									Dependency dep =
-											Dependency.newBuilder()
+						if (usedDependencyCollectionMode != UsedDependencyCollectionMode.None) {
+							if (directJars.contains(jarPath)) {
+								if ((usedDependencyCollectionMode == UsedDependencyCollectionMode.All
+										|| usedDependencyCollectionMode == UsedDependencyCollectionMode.DirectOnly)
+										&& !directDependenciesMap.containsKey(jarPath)) {
+									Dependency dep = Dependency.newBuilder()
 											// Path.toString uses the platform separator (`\` on Windows) which may not
 											// match the format in params files (which currently always use `/`, see
 											// bazelbuild/bazel#4108). JavaBuilder should always parse Path strings into
 											// java.nio.file.Paths before comparing them.
-											.setPath(jarPath.toString())
-											.setKind(Dependency.Kind.EXPLICIT)
-											.build();
+											.setPath(jarPath.toString()).setKind(Dependency.Kind.EXPLICIT).build();
 									directDependenciesMap.put(jarPath, dep);
 								}
 							} else {
-								if (usedDependencyCollectionMode == UsedDependencyCollectionMode.All && !noneDirectDependenciesMap.containsKey(jarPath)) {
-									Dependency dep =
-											Dependency.newBuilder()
+								if (usedDependencyCollectionMode == UsedDependencyCollectionMode.All
+										&& !noneDirectDependenciesMap.containsKey(jarPath)) {
+									Dependency dep = Dependency.newBuilder()
 											// Path.toString uses the platform separator (`\` on Windows) which may not
 											// match the format in params files (which currently always use `/`, see
 											// bazelbuild/bazel#4108). JavaBuilder should always parse Path strings into
 											// java.nio.file.Paths before comparing them.
-											.setPath(jarPath.toString())
-											.setKind(Dependency.Kind.IMPLICIT)
-											.build();
+											.setPath(jarPath.toString()).setKind(Dependency.Kind.IMPLICIT).build();
 									noneDirectDependenciesMap.put(jarPath, dep);
 								}
 							}
@@ -251,43 +265,50 @@ public class BlazeEcjMain {
 //    BlazeJavaCompiler.preRegister(context, plugins);
 //  }
 
-  public static BlazeJavacResult compile(BlazeJavacArguments arguments) {
-    // JDT uses getAbsolutePath/getCanonicalPath, which makes reporting of file paths to point into Bazel sandbox
-    // this causes issues in IDEs (IntelliJ and others) relying on parsing compiler output to map back errors/warnings
-    String sandboxPathPrefix;
-    try {
-    	sandboxPathPrefix = detectWorkingDirPathPrefix(arguments);
-    } catch (final IOException e) {
-	    return BlazeJavacResult.error(e.getMessage());
-	}
+	public static BlazeJavacResult compile(BlazeJavacArguments arguments) {
+		// JDT uses getAbsolutePath/getCanonicalPath, which makes reporting of file
+		// paths to point into Bazel sandbox
+		// this causes issues in IDEs (IntelliJ and others) relying on parsing compiler
+		// output to map back errors/warnings
+		String sandboxPathPrefix;
+		try {
+			sandboxPathPrefix = detectWorkingDirPathPrefix(arguments);
+		} catch (final IOException e) {
+			return BlazeJavacResult.error(e.getMessage());
+		}
 
-    try {
-      processPluginArgs(
-          arguments.plugins(), arguments.javacOptions(), arguments.blazeJavacOptions());
-    } catch (InvalidCommandLineException e) {
-      return BlazeJavacResult.error(e.getMessage());
-    }
+		try {
+			processPluginArgs(arguments.plugins(), arguments.javacOptions(), arguments.blazeJavacOptions());
+		} catch (InvalidCommandLineException e) {
+			return BlazeJavacResult.error(e.getMessage());
+		}
 
-    Map<Path, Path> sourceFilesByAbsoluteOrCanonicalPath = new HashMap<>();
-    for (Path sourceFile : arguments.sourceFiles()) {
-    	sourceFilesByAbsoluteOrCanonicalPath.put(sourceFile.toAbsolutePath(), sourceFile);
-    	try {
-    		sourceFilesByAbsoluteOrCanonicalPath.put(sourceFile.toRealPath(), sourceFile);
-    	} catch (IOException e) {
-    		return BlazeJavacResult.error(e.toString());
-    	}
-    }
+		Map<Path, Path> sourceFilesByAbsoluteOrCanonicalPath = new HashMap<>();
+		for (Path sourceFile : arguments.sourceFiles()) {
+			sourceFilesByAbsoluteOrCanonicalPath.put(sourceFile.toAbsolutePath(), sourceFile);
+			try {
+				sourceFilesByAbsoluteOrCanonicalPath.put(sourceFile.toRealPath(), sourceFile);
+			} catch (IOException e) {
+				return BlazeJavacResult.error(e.toString());
+			}
+		}
 
-    StringWriter errOutput = new StringWriter();
-    PrintWriter errWriter = new PrintWriter(errOutput);
+		StringWriter errOutput = new StringWriter();
+		PrintWriter errWriter = new PrintWriter(errOutput);
 
-    BlazeEclipseBatchCompiler compiler = new BlazeEclipseBatchCompiler(errWriter, errWriter, arguments.plugins(), sandboxPathPrefix, sourceFilesByAbsoluteOrCanonicalPath, UsedDependencyCollectionMode.fromOptionValue(getJavacOptionValue(arguments.javacOptions(), "-Xecj_collect_used_deps")));
+		// note, all -Xecj... are "blaze" specific javac options
+		String collectUsedDepsOption = getJavacOptionValue(arguments.blazeJavacOptions(), "-Xecj_collect_used_deps");
+		String problemSeverityPreferences = getJavacOptionValue(arguments.blazeJavacOptions(), "-Xecj_problem_severity_preferences");
 
-    List<String> ecjArguments = new ArrayList<>();
-    setLocations(ecjArguments, arguments, compiler.dependencyModule);
-    ecjArguments.addAll(arguments.javacOptions());
+		BlazeEclipseBatchCompiler compiler = new BlazeEclipseBatchCompiler(errWriter, errWriter, arguments.plugins(),
+				sandboxPathPrefix, sourceFilesByAbsoluteOrCanonicalPath, UsedDependencyCollectionMode
+						.fromOptionValue(collectUsedDepsOption), problemSeverityPreferences != null ? Path.of(problemSeverityPreferences) : null);
+
+		List<String> ecjArguments = new ArrayList<>();
+		setLocations(ecjArguments, arguments, compiler.dependencyModule);
+		ecjArguments.addAll(arguments.javacOptions());
 //    ecjArguments.add("-referenceInfo"); // easy way to get used dependencies
-    arguments.sourceFiles().stream().map(Path::toString).forEach(ecjArguments::add);
+		arguments.sourceFiles().stream().map(Path::toString).forEach(ecjArguments::add);
 
 //    if(compiler.verbose) {
 //    	errWriter.println("ECJ Command Line:");
@@ -296,83 +317,91 @@ public class BlazeEcjMain {
 //    	errWriter.println();
 //    }
 
-    boolean compileResult = compiler.compile((String[]) ecjArguments.toArray(new String[ecjArguments.size()]));
+		boolean compileResult = compiler.compile((String[]) ecjArguments.toArray(new String[ecjArguments.size()]));
 
-       BlazeJavacStatistics.Builder builder = BlazeJavacStatistics.newBuilder();
+		BlazeJavacStatistics.Builder builder = BlazeJavacStatistics.newBuilder();
 
-    Status status =  compileResult ? Status.OK : Status.ERROR;
-    Listener diagnosticsBuilder = new Listener(arguments.failFast());
+		Status status = compileResult ? Status.OK : Status.ERROR;
+		Listener diagnosticsBuilder = new Listener(arguments.failFast());
 
+		errWriter.flush();
+		ImmutableList<FormattedDiagnostic> diagnostics = diagnosticsBuilder.build();
 
-    errWriter.flush();
-    ImmutableList<FormattedDiagnostic> diagnostics = diagnosticsBuilder.build();
+		boolean werror = diagnostics.stream().anyMatch(d -> d.getCode().equals("compiler.err.warnings.and.werror"));
+		if (status.equals(Status.OK)) {
+			Optional<WerrorCustomOption> maybeWerrorCustom = arguments.blazeJavacOptions().stream()
+					.filter(arg -> arg.startsWith("-Werror:")).collect(toOptional()).map(WerrorCustomOption::create);
+			if (maybeWerrorCustom.isPresent()) {
+				WerrorCustomOption werrorCustom = maybeWerrorCustom.get();
+				if (diagnostics.stream().anyMatch(d -> isWerror(werrorCustom, d))) {
+					errOutput.append("error: warnings found and -Werror specified\n");
+					status = Status.ERROR;
+					werror = true;
+				}
+			}
+		}
 
-    boolean werror =
-        diagnostics.stream().anyMatch(d -> d.getCode().equals("compiler.err.warnings.and.werror"));
-    if (status.equals(Status.OK)) {
-      Optional<WerrorCustomOption> maybeWerrorCustom =
-          arguments.blazeJavacOptions().stream()
-              .filter(arg -> arg.startsWith("-Werror:"))
-              .collect(toOptional())
-              .map(WerrorCustomOption::create);
-      if (maybeWerrorCustom.isPresent()) {
-        WerrorCustomOption werrorCustom = maybeWerrorCustom.get();
-        if (diagnostics.stream().anyMatch(d -> isWerror(werrorCustom, d))) {
-          errOutput.append("error: warnings found and -Werror specified\n");
-          status = Status.ERROR;
-          werror = true;
-        }
-      }
-    }
+		String output = errOutput.toString();
 
-    String output = errOutput.toString();
+		// JDT uses getAbsolutePath/getCanonicalPath, which makes reporting of file
+		// paths to point into Bazel sandbox
+		// this causes issues in IDEs (IntelliJ and others) relying on parsing compiler
+		// output to map back errors/warnings
+		String canonicalPathPrefix;
+		try {
+			canonicalPathPrefix = detectWorkingDirPathPrefix(arguments);
 
-    // JDT uses getAbsolutePath/getCanonicalPath, which makes reporting of file paths to point into Bazel sandbox
-    // this causes issues in IDEs (IntelliJ and others) relying on parsing compiler output to map back errors/warnings
-    String canonicalPathPrefix;
-    try {
-    	canonicalPathPrefix = detectWorkingDirPathPrefix(arguments);
+		} catch (final IOException e) {
+			e.printStackTrace(errWriter);
+			errWriter.flush();
+			return BlazeJavacResult.error(e.getMessage());
+		}
 
-
-    } catch (final IOException e) {
-		e.printStackTrace(errWriter);
-	    errWriter.flush();
-	    return BlazeJavacResult.error(e.getMessage());
+		if (canonicalPathPrefix != null) {
+			output = output.replace(canonicalPathPrefix, "");
+		}
+		return BlazeJavacResult.createFullResult(status, filterDiagnostics(werror, diagnostics), output,
+				builder.build());
 	}
 
-    if(canonicalPathPrefix != null) {
-    	output = output.replace(canonicalPathPrefix, "");
-    }
-    return BlazeJavacResult.createFullResult(
-        status,
-        filterDiagnostics(werror, diagnostics),
-        output,
-        builder.build());
-  }
-
-private static String getJavacOptionValue(List<String> javacOptions, String optionName) {
-	for (int i = 0; i < javacOptions.size(); i++) {
-    	String option = javacOptions.get(i);
-    	if(option.startsWith(optionName)) {
-    		int separatorPos = option.indexOf('=');
-    		if(separatorPos == -1 && javacOptions.size() > i+1) {
-    			return javacOptions.get(i+1);
-    		} else {
-    			return option.substring(separatorPos+1).trim();
-    		}
-    	}
+	private static String getJavacOptionValue(List<String> javacOptions, String optionName) {
+		for (int i = 0; i < javacOptions.size(); i++) {
+			String option = javacOptions.get(i);
+			if (option.startsWith(optionName)) {
+				int separatorPos = option.indexOf('=');
+				if (separatorPos == -1 && javacOptions.size() > i + 1) {
+					return javacOptions.get(i + 1);
+				} else {
+					return option.substring(separatorPos + 1).trim();
+				}
+			}
+		}
+		return null;
 	}
-	return null;
-}
+
+	static Map<String, String> loadProblemSeverityPreferences(Path compilerPreferencesFile) {
+		final Properties properties = new Properties();
+		try (InputStream is = new BufferedInputStream(newInputStream(compilerPreferencesFile))) {
+			properties.load(is);
+		} catch (IOException e) {
+			throw new IllegalStateException(format("Error loading problem severity preferences '%s': %s", compilerPreferencesFile, e.getMessage()), e);
+		}
+
+		Set<String> warningOptions = Set.of(CompilerOptions.warningOptionNames());
+		return properties.entrySet().stream() //
+				.filter(e -> warningOptions.contains(e.getKey()))
+				.collect(toMap(e -> (String) e.getKey(), e -> ((String) e.getValue()).trim()));
+	}
 
 	private static String detectWorkingDirPathPrefix(BlazeJavacArguments arguments) throws IOException {
-		// since the JDT compiler is executed from within the sandbox, the absolute path will be resolved to the working directory
+		// since the JDT compiler is executed from within the sandbox, the absolute path
+		// will be resolved to the working directory
 		// we simple remove the working directory
 		String workDir = System.getProperty("user.dir");
-		if(workDir == null)
+		if (workDir == null)
 			throw new IOException("No working directory returned by JVM for property user.dir!");
 
-		if(!workDir.endsWith("/")) {
+		if (!workDir.endsWith("/")) {
 			workDir += "/";
 		}
 
@@ -385,100 +414,97 @@ private static String getJavacOptionValue(List<String> javacOptions, String opti
 		String absoluteFilePath = first.get().toAbsolutePath().toString();
 		if (!absoluteFilePath.startsWith(workDir)) {
 			String filePath = first.get().toString();
-			throw new IOException(String.format("Unable to confirm working dir '%s' using file '%s' with absolute path '%s'!", workDir, filePath, absoluteFilePath));
+			throw new IOException(
+					String.format("Unable to confirm working dir '%s' using file '%s' with absolute path '%s'!",
+							workDir, filePath, absoluteFilePath));
 		}
 
 		return workDir;
 	}
 
-  private static boolean isWerror(WerrorCustomOption werrorCustom, FormattedDiagnostic diagnostic) {
-    switch (diagnostic.getKind()) {
-      case WARNING:
-      case MANDATORY_WARNING:
-        return werrorCustom.isEnabled(diagnostic.getLintCategory());
-      default:
-        return false;
-    }
-  }
-
-  private static final ImmutableSet<String> IGNORED_DIAGNOSTIC_CODES =
-      ImmutableSet.of(
-          "compiler.note.deprecated.filename",
-          "compiler.note.deprecated.plural",
-          "compiler.note.deprecated.recompile",
-          "compiler.note.deprecated.filename.additional",
-          "compiler.note.deprecated.plural.additional",
-          "compiler.note.unchecked.filename",
-          "compiler.note.unchecked.plural",
-          "compiler.note.unchecked.recompile",
-          "compiler.note.unchecked.filename.additional",
-          "compiler.note.unchecked.plural.additional",
-          "compiler.warn.sun.proprietary",
-          // avoid warning spam when enabling processor options for an entire tree, only a subset
-          // of which actually runs the processor
-          "compiler.warn.proc.unmatched.processor.options",
-          // don't want about v54 class files when running javac9 on JDK 10
-          // TODO(cushon): remove after the next javac update
-          "compiler.warn.big.major.version",
-          // don't want about incompatible processor source versions when running javac9 on JDK 10
-          // TODO(cushon): remove after the next javac update
-          "compiler.warn.proc.processor.incompatible.source.version",
-          // https://github.com/bazelbuild/bazel/issues/5985
-          "compiler.warn.unknown.enum.constant",
-          "compiler.warn.unknown.enum.constant.reason");
-
-  private static ImmutableList<FormattedDiagnostic> filterDiagnostics(
-      boolean werror, ImmutableList<FormattedDiagnostic> diagnostics) {
-    return diagnostics.stream()
-        .filter(d -> shouldReportDiagnostic(werror, d))
-        // Print errors last to make them more visible.
-        .sorted(comparing(FormattedDiagnostic::getKind).reversed())
-        .collect(toImmutableList());
-  }
-
-  private static boolean shouldReportDiagnostic(boolean werror, FormattedDiagnostic diagnostic) {
-    if (!IGNORED_DIAGNOSTIC_CODES.contains(diagnostic.getCode())) {
-      return true;
-    }
-    // show compiler.warn.sun.proprietary if we're running with -Werror
-    if (werror && diagnostic.getKind() != Diagnostic.Kind.NOTE) {
-      return true;
-    }
-    return false;
-  }
-
-  /** Processes Plugin-specific arguments and removes them from the args array. */
-  @VisibleForTesting
-  static void processPluginArgs(
-      ImmutableList<BlazeJavaCompilerPlugin> plugins,
-      ImmutableList<String> standardJavacopts,
-      ImmutableList<String> blazeJavacopts)
-      throws InvalidCommandLineException {
-    for (BlazeJavaCompilerPlugin plugin : plugins) {
-      plugin.processArgs(standardJavacopts, blazeJavacopts);
-    }
-  }
-
-  private static void setLocations(List<String> ecjArguments, BlazeJavacArguments arguments, DependencyModule dependencyModule) {
-	if(!arguments.processorPath().isEmpty()) {
-		ecjArguments.add("-processorpath");
-		ecjArguments.add(arguments.processorPath().stream().map(Path::toString).collect(joining(":")));
-	    // if release/target >= JDK 9 then -processorpath will be ignored by JDT but --processor-module-path is expected instead
-	    // (we set both to let JDT pick)
-		ecjArguments.add("--processor-module-path");
-		ecjArguments.add(arguments.processorPath().stream().map(Path::toString).collect(joining(":")));
+	private static boolean isWerror(WerrorCustomOption werrorCustom, FormattedDiagnostic diagnostic) {
+		switch (diagnostic.getKind()) {
+		case WARNING:
+		case MANDATORY_WARNING:
+			return werrorCustom.isEnabled(diagnostic.getLintCategory());
+		default:
+			return false;
+		}
 	}
 
-	if(!arguments.classPath().isEmpty()) {
-		ImmutableSet<Path> directJars = dependencyModule.directJars();
-		ecjArguments.add("-classpath");
-		ecjArguments.add(arguments.classPath().stream().map(p ->
-			directJars.contains(p) ? p.toString() : format ("%s[-**/*]", p.toString())
-		).collect(joining(":")));
+	private static final ImmutableSet<String> IGNORED_DIAGNOSTIC_CODES = ImmutableSet.of(
+			"compiler.note.deprecated.filename", "compiler.note.deprecated.plural",
+			"compiler.note.deprecated.recompile", "compiler.note.deprecated.filename.additional",
+			"compiler.note.deprecated.plural.additional", "compiler.note.unchecked.filename",
+			"compiler.note.unchecked.plural", "compiler.note.unchecked.recompile",
+			"compiler.note.unchecked.filename.additional", "compiler.note.unchecked.plural.additional",
+			"compiler.warn.sun.proprietary",
+			// avoid warning spam when enabling processor options for an entire tree, only a
+			// subset
+			// of which actually runs the processor
+			"compiler.warn.proc.unmatched.processor.options",
+			// don't want about v54 class files when running javac9 on JDK 10
+			// TODO(cushon): remove after the next javac update
+			"compiler.warn.big.major.version",
+			// don't want about incompatible processor source versions when running javac9
+			// on JDK 10
+			// TODO(cushon): remove after the next javac update
+			"compiler.warn.proc.processor.incompatible.source.version",
+			// https://github.com/bazelbuild/bazel/issues/5985
+			"compiler.warn.unknown.enum.constant", "compiler.warn.unknown.enum.constant.reason");
+
+	private static ImmutableList<FormattedDiagnostic> filterDiagnostics(boolean werror,
+			ImmutableList<FormattedDiagnostic> diagnostics) {
+		return diagnostics.stream().filter(d -> shouldReportDiagnostic(werror, d))
+				// Print errors last to make them more visible.
+				.sorted(comparing(FormattedDiagnostic::getKind).reversed()).collect(toImmutableList());
 	}
 
-	// modular dependencies must be on the module path, not the classpath
-	//[ECJ fails if both are set]fileManager.setLocationFromPaths(StandardLocation.MODULE_PATH, arguments.classPath());
+	private static boolean shouldReportDiagnostic(boolean werror, FormattedDiagnostic diagnostic) {
+		if (!IGNORED_DIAGNOSTIC_CODES.contains(diagnostic.getCode())) {
+			return true;
+		}
+		// show compiler.warn.sun.proprietary if we're running with -Werror
+		if (werror && diagnostic.getKind() != Diagnostic.Kind.NOTE) {
+			return true;
+		}
+		return false;
+	}
+
+	/** Processes Plugin-specific arguments and removes them from the args array. */
+	@VisibleForTesting
+	static void processPluginArgs(ImmutableList<BlazeJavaCompilerPlugin> plugins,
+			ImmutableList<String> standardJavacopts, ImmutableList<String> blazeJavacopts)
+			throws InvalidCommandLineException {
+		for (BlazeJavaCompilerPlugin plugin : plugins) {
+			plugin.processArgs(standardJavacopts, blazeJavacopts);
+		}
+	}
+
+	private static void setLocations(List<String> ecjArguments, BlazeJavacArguments arguments,
+			DependencyModule dependencyModule) {
+		if (!arguments.processorPath().isEmpty()) {
+			ecjArguments.add("-processorpath");
+			ecjArguments.add(arguments.processorPath().stream().map(Path::toString).collect(joining(":")));
+			// if release/target >= JDK 9 then -processorpath will be ignored by JDT but
+			// --processor-module-path is expected instead
+			// (we set both to let JDT pick)
+			ecjArguments.add("--processor-module-path");
+			ecjArguments.add(arguments.processorPath().stream().map(Path::toString).collect(joining(":")));
+		}
+
+		if (!arguments.classPath().isEmpty()) {
+			ImmutableSet<Path> directJars = dependencyModule.directJars();
+			ecjArguments.add("-classpath");
+			ecjArguments.add(arguments.classPath().stream()
+					.map(p -> directJars.contains(p) ? p.toString() : format("%s[-**/*]", p.toString()))
+					.collect(joining(":")));
+		}
+
+		// modular dependencies must be on the module path, not the classpath
+		// [ECJ fails if both are
+		// set]fileManager.setLocationFromPaths(StandardLocation.MODULE_PATH,
+		// arguments.classPath());
 
 //	if(compilerOptions.complianceLevel <= ClassFileConstants.JDK1_8) {
 //		if(!arguments.bootClassPath().isEmpty()) {
@@ -487,24 +513,24 @@ private static String getJavacOptionValue(List<String> javacOptions, String opti
 //		}
 //	}
 
-	ecjArguments.add("-d");
-	ecjArguments.add(arguments.classOutput().toString());
+		ecjArguments.add("-d");
+		ecjArguments.add(arguments.classOutput().toString());
 
-    if (arguments.sourceOutput() != null) {
-    	ecjArguments.add("-s");
-    	ecjArguments.add(arguments.sourceOutput().toString());
-    }
+		if (arguments.sourceOutput() != null) {
+			ecjArguments.add("-s");
+			ecjArguments.add(arguments.sourceOutput().toString());
+		}
 
-	if(!arguments.sourcePath().isEmpty()) {
-		ecjArguments.add("-sourcepath");
-		ecjArguments.add(arguments.sourcePath().stream().map(Path::toString).collect(joining(":")));
+		if (!arguments.sourcePath().isEmpty()) {
+			ecjArguments.add("-sourcepath");
+			ecjArguments.add(arguments.sourcePath().stream().map(Path::toString).collect(joining(":")));
+		}
+
+		if (arguments.system() != null) {
+			ecjArguments.add("--system");
+			ecjArguments.add(arguments.system().toString());
+		}
 	}
-
-	if (arguments.system() != null) {
-    	ecjArguments.add("--system");
-    	ecjArguments.add(arguments.system().toString());
-	}
-  }
 
 //  /**
 //   * When Bazel invokes JavaBuilder, it puts javac.jar on the bootstrap class path and
@@ -548,16 +574,18 @@ private static String getJavacOptionValue(List<String> javacOptions, String opti
 //    }
 //  }
 
-  public static ClassLoader getPlatformClassLoader() {
-    try {
-      // In JDK 9+, all platform classes are visible to the platform class loader:
-      // https://docs.oracle.com/javase/9/docs/api/java/lang/ClassLoader.html#getPlatformClassLoader--
-      return (ClassLoader) ClassLoader.class.getMethod("getPlatformClassLoader").invoke(null);
-    } catch (ReflectiveOperationException e) {
-      // In earlier releases, set 'null' as the parent to delegate to the boot class loader.
-      return null;
-    }
-  }
+	public static ClassLoader getPlatformClassLoader() {
+		try {
+			// In JDK 9+, all platform classes are visible to the platform class loader:
+			// https://docs.oracle.com/javase/9/docs/api/java/lang/ClassLoader.html#getPlatformClassLoader--
+			return (ClassLoader) ClassLoader.class.getMethod("getPlatformClassLoader").invoke(null);
+		} catch (ReflectiveOperationException e) {
+			// In earlier releases, set 'null' as the parent to delegate to the boot class
+			// loader.
+			return null;
+		}
+	}
 
-  private BlazeEcjMain() {}
+	private BlazeEcjMain() {
+	}
 }

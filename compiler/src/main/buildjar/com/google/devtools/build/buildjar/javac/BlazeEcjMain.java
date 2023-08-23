@@ -106,8 +106,7 @@ public class BlazeEcjMain {
 		public BlazeEclipseBatchCompiler(PrintWriter outWriter, PrintWriter errWriter,
 				ImmutableList<BlazeJavaCompilerPlugin> plugins, String sandboxPathPrefix,
 				Map<Path, Path> sourceFilesByAbsoluteOrCanonicalPath,
-				UsedDependencyCollectionMode usedDependencyCollectionMode,
-				Path problemSeverityPreferences) {
+				UsedDependencyCollectionMode usedDependencyCollectionMode, Path problemSeverityPreferences) {
 			super(outWriter, errWriter, false /* systemExitWhenFinished */, null /* customDefaultOptions */,
 					null /* compilationProgress */);
 			this.usedDependencyCollectionMode = usedDependencyCollectionMode;
@@ -121,7 +120,7 @@ public class BlazeEcjMain {
 			this.directDependenciesMap = dependencyModule.getExplicitDependenciesMap();
 			this.noneDirectDependenciesMap = dependencyModule.getImplicitDependenciesMap();
 
-			if(problemSeverityPreferences != null) {
+			if (problemSeverityPreferences != null) {
 				this.options.putAll(loadProblemSeverityPreferences(problemSeverityPreferences));
 			}
 
@@ -298,11 +297,15 @@ public class BlazeEcjMain {
 
 		// note, all -Xecj... are "blaze" specific javac options
 		String collectUsedDepsOption = getJavacOptionValue(arguments.blazeJavacOptions(), "-Xecj_collect_used_deps");
-		String problemSeverityPreferences = getJavacOptionValue(arguments.blazeJavacOptions(), "-Xecj_problem_severity_preferences");
+		String problemSeverityPreferences = getJavacOptionValue(arguments.blazeJavacOptions(),
+				"-Xecj_problem_severity_preferences");
 
 		BlazeEclipseBatchCompiler compiler = new BlazeEclipseBatchCompiler(errWriter, errWriter, arguments.plugins(),
-				sandboxPathPrefix, sourceFilesByAbsoluteOrCanonicalPath, UsedDependencyCollectionMode
-						.fromOptionValue(collectUsedDepsOption), problemSeverityPreferences != null ? Path.of(problemSeverityPreferences) : null);
+				sandboxPathPrefix, sourceFilesByAbsoluteOrCanonicalPath,
+				UsedDependencyCollectionMode.fromOptionValue(collectUsedDepsOption),
+				problemSeverityPreferences != null && !isDisabled(problemSeverityPreferences)
+						? Path.of(problemSeverityPreferences)
+						: null);
 
 		List<String> ecjArguments = new ArrayList<>();
 		setLocations(ecjArguments, arguments, compiler.dependencyModule);
@@ -364,19 +367,34 @@ public class BlazeEcjMain {
 				builder.build());
 	}
 
+	private static boolean isDisabled(String problemSeverityPreferences) {
+		Set<String> turnOffSettings = Set.of("off", "none", "disabled", "");
+		return turnOffSettings.contains(problemSeverityPreferences);
+	}
+
+	/**
+	 * Go through the list of javac options and collect the value of the <b>last</b> option found.
+	 * <p>
+	 * The reason we go with last is that we assume it's the most specific.
+	 * </p>
+	 * @param javacOptions
+	 * @param optionName
+	 * @return
+	 */
 	private static String getJavacOptionValue(List<String> javacOptions, String optionName) {
+		String value = null; // last one wins
 		for (int i = 0; i < javacOptions.size(); i++) {
 			String option = javacOptions.get(i);
 			if (option.startsWith(optionName)) {
 				int separatorPos = option.indexOf('=');
 				if (separatorPos == -1 && javacOptions.size() > i + 1) {
-					return javacOptions.get(i + 1);
+					value = javacOptions.get(i + 1);
 				} else {
-					return option.substring(separatorPos + 1).trim();
+					value = option.substring(separatorPos + 1).trim();
 				}
 			}
 		}
-		return null;
+		return value;
 	}
 
 	static Map<String, String> loadProblemSeverityPreferences(Path compilerPreferencesFile) {
@@ -384,7 +402,8 @@ public class BlazeEcjMain {
 		try (InputStream is = new BufferedInputStream(newInputStream(compilerPreferencesFile))) {
 			properties.load(is);
 		} catch (IOException e) {
-			throw new IllegalStateException(format("Error loading problem severity preferences '%s': %s", compilerPreferencesFile, e.getMessage()), e);
+			throw new IllegalStateException(format("Error loading problem severity preferences '%s': %s",
+					compilerPreferencesFile, e.getMessage()), e);
 		}
 
 		Set<String> warningOptions = Set.of(CompilerOptions.warningOptionNames());

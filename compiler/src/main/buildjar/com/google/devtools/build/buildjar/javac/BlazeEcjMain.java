@@ -106,7 +106,8 @@ public class BlazeEcjMain {
 		public BlazeEclipseBatchCompiler(PrintWriter outWriter, PrintWriter errWriter,
 				ImmutableList<BlazeJavaCompilerPlugin> plugins, String sandboxPathPrefix,
 				Map<Path, Path> sourceFilesByAbsoluteOrCanonicalPath,
-				UsedDependencyCollectionMode usedDependencyCollectionMode, Path problemSeverityPreferences) {
+				UsedDependencyCollectionMode usedDependencyCollectionMode,
+				Map<String, String> problemSeverityPreferences) {
 			super(outWriter, errWriter, false /* systemExitWhenFinished */, null /* customDefaultOptions */,
 					null /* compilationProgress */);
 			this.usedDependencyCollectionMode = usedDependencyCollectionMode;
@@ -121,7 +122,7 @@ public class BlazeEcjMain {
 			this.noneDirectDependenciesMap = dependencyModule.getImplicitDependenciesMap();
 
 			if (problemSeverityPreferences != null) {
-				this.options.putAll(loadProblemSeverityPreferences(problemSeverityPreferences));
+				this.options.putAll(problemSeverityPreferences);
 			}
 
 			switch (dependencyModule.getStrictJavaDeps()) {
@@ -297,15 +298,21 @@ public class BlazeEcjMain {
 
 		// note, all -Xecj... are "blaze" specific javac options
 		String collectUsedDepsOption = getJavacOptionValue(arguments.blazeJavacOptions(), "-Xecj_collect_used_deps");
-		String problemSeverityPreferences = getJavacOptionValue(arguments.blazeJavacOptions(),
+		String problemSeverityPreferencesFile = getJavacOptionValue(arguments.blazeJavacOptions(),
 				"-Xecj_problem_severity_preferences");
+
+		Map<String, String> problemSeverityPreferences = null;
+		try {
+			if (problemSeverityPreferencesFile != null && !isDisabled(problemSeverityPreferencesFile)) {
+				problemSeverityPreferences = loadProblemSeverityPreferences(Path.of(problemSeverityPreferencesFile));
+			}
+		} catch (Exception e) {
+			return BlazeJavacResult.error(format("Error reading problem severity preferences: %s", e.toString()));
+		}
 
 		BlazeEclipseBatchCompiler compiler = new BlazeEclipseBatchCompiler(errWriter, errWriter, arguments.plugins(),
 				sandboxPathPrefix, sourceFilesByAbsoluteOrCanonicalPath,
-				UsedDependencyCollectionMode.fromOptionValue(collectUsedDepsOption),
-				problemSeverityPreferences != null && !isDisabled(problemSeverityPreferences)
-						? Path.of(problemSeverityPreferences)
-						: null);
+				UsedDependencyCollectionMode.fromOptionValue(collectUsedDepsOption), problemSeverityPreferences);
 
 		List<String> ecjArguments = new ArrayList<>();
 		setLocations(ecjArguments, arguments, compiler.dependencyModule);
@@ -373,10 +380,12 @@ public class BlazeEcjMain {
 	}
 
 	/**
-	 * Go through the list of javac options and collect the value of the <b>last</b> option found.
+	 * Go through the list of javac options and collect the value of the <b>last</b>
+	 * option found.
 	 * <p>
 	 * The reason we go with last is that we assume it's the most specific.
 	 * </p>
+	 *
 	 * @param javacOptions
 	 * @param optionName
 	 * @return
@@ -397,13 +406,10 @@ public class BlazeEcjMain {
 		return value;
 	}
 
-	static Map<String, String> loadProblemSeverityPreferences(Path compilerPreferencesFile) {
+	static Map<String, String> loadProblemSeverityPreferences(Path compilerPreferencesFile) throws IOException {
 		final Properties properties = new Properties();
 		try (InputStream is = new BufferedInputStream(newInputStream(compilerPreferencesFile))) {
 			properties.load(is);
-		} catch (IOException e) {
-			throw new IllegalStateException(format("Error loading problem severity preferences '%s': %s",
-					compilerPreferencesFile, e.getMessage()), e);
 		}
 
 		Set<String> warningOptions = Set.of(CompilerOptions.warningOptionNames());

@@ -68,10 +68,10 @@ _DEFAULT_REPOSITORIES = [
 
 jvm_maven_import_external(
     name = "rules_jdt_guava",
-    artifact = "com.google.guava:guava:31.0.1-jre",
-    artifact_sha256 = "d5be94d65e87bd219fb3193ad1517baa55a3b88fc91d21cf735826ab5af087b9",
-    srcjar_urls = [server + "/com/google/guava/guava/31.0.1-jre/guava-31.0.1-jre-sources.jar" for server in _DEFAULT_REPOSITORIES],
-    srcjar_sha256 = "fc0fb66f315f10b8713fc43354936d3649a8ad63f789d42fd7c3e55ecf72e092",
+    artifact = "com.google.guava:guava:32.1.1-jre",
+    artifact_sha256 = "91fbba37f1c8b251cf9ea9e7d3a369eb79eb1e6a5df1d4bbf483dd0380740281",
+    srcjar_urls = [server + "/com/google/guava/guava/32.1.1-jre/guava-32.1.1-jre-sources.jar" for server in _DEFAULT_REPOSITORIES],
+    srcjar_sha256 = "5e7b6cebd2e9087a536c1054bf52a2e6a49c284772421f146640cfadc54ba573",
     licenses = ["notice"],
     server_urls = _DEFAULT_REPOSITORIES,
 )
@@ -118,24 +118,24 @@ jvm_maven_import_external(
 
 jvm_maven_import_external(
     name = "rules_jdt_org_ow2_asm_asm",
-    artifact = "org.ow2.asm:asm:jar:9.3",
-    artifact_sha256 = "1263369b59e29c943918de11d6d6152e2ec6085ce63e5710516f8c67d368e4bc",
+    artifact = "org.ow2.asm:asm:jar:9.5",
+    artifact_sha256 = "b62e84b5980729751b0458c534cf1366f727542bb8d158621335682a460f0353",
     licenses = ["notice"],
     server_urls = _DEFAULT_REPOSITORIES,
 )
 
 jvm_maven_import_external(
     name = "rules_jdt_org_ow2_asm_asm_analysis",
-    artifact = "org.ow2.asm:asm-analysis:jar:9.3",
-    artifact_sha256 = "37fd5392bb2cf4c15f202ffefd46d0e92bb34ff848c549f30d426a60d6b29495",
+    artifact = "org.ow2.asm:asm-analysis:jar:9.5",
+    artifact_sha256 = "39f1cf1791335701c3b02cae7b2bc21057ec9a55b2240789cb6d552b2b2c62fa",
     deps = ["@rules_jdt_org_ow2_asm_asm_tree"],
     server_urls = _DEFAULT_REPOSITORIES,
 )
 
 jvm_maven_import_external(
     name = "rules_jdt_org_ow2_asm_asm_commons",
-    artifact = "org.ow2.asm:asm-commons:jar:9.3",
-    artifact_sha256 = "a347c24732db2aead106b6e5996a015b06a3ef86e790a4f75b61761f0d2f7f39",
+    artifact = "org.ow2.asm:asm-commons:jar:9.5",
+    artifact_sha256 = "72eee9fbafb9de8d9463f20dd584a48ceeb7e5152ad4c987bfbe17dd4811c9ae",
     deps = [
         "@rules_jdt_org_ow2_asm_asm",
         "@rules_jdt_org_ow2_asm_asm_analysis",
@@ -145,14 +145,14 @@ jvm_maven_import_external(
 )
 jvm_maven_import_external(
     name = "rules_jdt_org_ow2_asm_asm_tree",
-    artifact = "org.ow2.asm:asm-tree:jar:9.3",
-    artifact_sha256 = "ae629c2609f39681ef8d140a42a23800464a94f2d23e36d8f25cd10d5e4caff4",
+    artifact = "org.ow2.asm:asm-tree:jar:9.5",
+    artifact_sha256 = "3c33a648191079aeaeaeb7c19a49b153952f9e40fe86fbac5205554ddd9acd94",
     deps = ["@rules_jdt_org_ow2_asm_asm"],
     server_urls = _DEFAULT_REPOSITORIES,
 )
 jvm_maven_import_external(
     name = "rules_jdt_org_ow2_asm_asm_util",
-    artifact = "org.ow2.asm:asm-util:jar:9.3",
+    artifact = "org.ow2.asm:asm-util:jar:9.5",
     artifact_sha256 = "70f78f291ca0298afdb567fa85c5667869bc3da3914784816413853994962192",
     deps = [
         "@rules_jdt_org_ow2_asm_asm",
@@ -161,4 +161,4 @@ jvm_maven_import_external(
     ],
     server_urls = _DEFAULT_REPOSITORIES,
 )
-    
+

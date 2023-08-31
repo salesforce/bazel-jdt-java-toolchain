@@ -1,8 +1,8 @@
 load(
   "@bazel_tools//tools/jdk:default_java_toolchain.bzl",
-  "default_java_toolchain", "DEFAULT_TOOLCHAIN_CONFIGURATION"
+  "default_java_toolchain", "DEFAULT_TOOLCHAIN_CONFIGURATION", "BASE_JDK9_JVM_OPTS"
 )
-   
+
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
@@ -22,6 +22,7 @@ RELEASES = (8, 9, 10, 11)
         header_compiler_direct = ["//compiler/tools:TurbineDirect"],
         javabuilder = ["//compiler/export:JdtJavaBuilder"],
         java_runtime = "@local_jdk//:jdk",
+        jvm_opts = BASE_JDK9_JVM_OPTS + ["-XX:-MaxFDLimit"],
         source_version = "%s" % release,
         target_version = "%s" % release,
     )
@@ -37,6 +38,7 @@ RELEASES_EMPTY_CONFIG = (15, 17)
         header_compiler_direct = ["//compiler/tools:TurbineDirect"],
         javabuilder = ["//compiler/export:JdtJavaBuilder"],
         java_runtime = "@local_jdk//:jdk",
+        jvm_opts = BASE_JDK9_JVM_OPTS + ["-XX:-MaxFDLimit"],
         source_version = "%s" % release,
         target_version = "%s" % release,
     )

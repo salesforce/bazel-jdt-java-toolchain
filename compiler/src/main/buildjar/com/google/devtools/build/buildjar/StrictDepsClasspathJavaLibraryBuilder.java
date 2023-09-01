@@ -41,11 +41,6 @@ public class StrictDepsClasspathJavaLibraryBuilder extends SimpleJavaLibraryBuil
 	 */
 	@Override
 	BlazeJavacResult compileSources(JavaLibraryBuildRequest build, JavacRunner javacRunner) throws IOException {
-		if(build.getDependencyModule().directJars().isEmpty()) {
-			// in this case the direct jars list is empty
-			return BlazeJavacResult.error("No direct jars information supplied by Bazel. Please adjust Bazel settings to allow submission of direct dependency information (e.g., don't use --strict_java_deps=off).");
-		}
-
 		ImmutableList<Path> compressedClasspath = build.getDependencyModule().directJars().stream()
 				.collect(toImmutableList());
 

@@ -14,6 +14,8 @@
 
 package com.google.devtools.build.buildjar;
 
+import static com.google.devtools.build.buildjar.StrictDepsClasspathJavaLibraryBuilder.OPTION_STRICT_DEPS_BUILDER;
+
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
@@ -28,7 +30,6 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.devtools.build.buildjar.javac.BlazeJavacResult;
 import com.google.devtools.build.buildjar.javac.BlazeJavacResult.Status;
-import com.google.devtools.build.buildjar.javac.FormattedDiagnostic;
 import com.google.devtools.build.buildjar.javac.JavacOptions;
 import com.google.devtools.build.buildjar.javac.plugins.BlazeJavaCompilerPlugin;
 import com.google.devtools.build.buildjar.javac.plugins.dependency.DependencyModule;
@@ -90,7 +91,7 @@ public class BazelEcjJavaBuilder {
   }
 
   private Supplier<SimpleJavaLibraryBuilder> getBuilder(JavaLibraryBuildRequest build) {
-    if(build.getJavacOpts().contains("-Xecj_use_direct_deps_only"))
+    if(build.getJavacOpts().contains(OPTION_STRICT_DEPS_BUILDER))
       return StrictDepsClasspathJavaLibraryBuilder::new;
     return build.getDependencyModule().reduceClasspath()
         ? ReducedClasspathJavaLibraryBuilder::new

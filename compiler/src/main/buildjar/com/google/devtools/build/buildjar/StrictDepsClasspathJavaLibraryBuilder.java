@@ -31,6 +31,8 @@ import com.google.devtools.build.buildjar.javac.statistics.BlazeJavacStatistics;
  */
 public class StrictDepsClasspathJavaLibraryBuilder extends SimpleJavaLibraryBuilder {
 
+	static final String OPTION_STRICT_DEPS_BUILDER = "-Xecj_use_direct_deps_only";
+
 	/**
 	 * Attempts to minimize the compile-time classpath before invoking javac,
 	 * falling back to a regular compile.
@@ -41,13 +43,20 @@ public class StrictDepsClasspathJavaLibraryBuilder extends SimpleJavaLibraryBuil
 	 */
 	@Override
 	BlazeJavacResult compileSources(JavaLibraryBuildRequest build, JavacRunner javacRunner) throws IOException {
-		if(build.getDependencyModule().directJars().isEmpty()) {
-			// in this case the direct jars list is empty
-			return BlazeJavacResult.error("No direct jars information supplied by Bazel. Please adjust Bazel settings to allow submission of direct dependency information (e.g., don't use --strict_java_deps=off).");
-		}
+		ImmutableList<Path> compressedClasspath;
+		switch (build.getDependencyModule().getStrictJavaDeps()) {
+		case OFF:
+			// this does nor really make sense but the user selected to do so
+			compressedClasspath = build.getClassPath();
+			break;
 
-		ImmutableList<Path> compressedClasspath = build.getDependencyModule().directJars().stream()
-				.collect(toImmutableList());
+		case ERROR:
+		case WARN:
+		default:
+			// compile with the direct jars only
+			compressedClasspath = build.getDependencyModule().directJars().stream().collect(toImmutableList());
+			break;
+		}
 
 		BlazeJavacResult result = javacRunner.invokeJavac(build.toBlazeJavacArguments(compressedClasspath));
 

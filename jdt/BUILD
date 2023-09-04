@@ -33,7 +33,7 @@ RELEASES_EMPTY_CONFIG = (15, 17)
 [
     default_java_toolchain(
         name = "jdt_toolchain_java%d" % release,
-        configuration = dict(),
+        configuration = dict(),   # FIXME: why is this empty?
         header_compiler = ["//compiler/tools:TurbineDirect"],
         header_compiler_direct = ["//compiler/tools:TurbineDirect"],
         javabuilder = ["//compiler/export:JdtJavaBuilder"],

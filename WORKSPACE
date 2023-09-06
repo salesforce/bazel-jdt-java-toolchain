@@ -63,7 +63,6 @@ rules_jdt_dependencies()
 load("@bazel_tools//tools/build_defs/repo:jvm.bzl", "jvm_maven_import_external")
 _DEFAULT_REPOSITORIES = [
     "https://repo1.maven.org/maven2",
-    "https://maven.google.com",
 ]
 
 jvm_maven_import_external(
@@ -153,7 +152,7 @@ jvm_maven_import_external(
 jvm_maven_import_external(
     name = "rules_jdt_org_ow2_asm_asm_util",
     artifact = "org.ow2.asm:asm-util:jar:9.5",
-    artifact_sha256 = "70f78f291ca0298afdb567fa85c5667869bc3da3914784816413853994962192",
+    artifact_sha256 = "c467f1bb3c08888f47243e2d475209b34a772d627e44fca06752e18bb038bd74",
     deps = [
         "@rules_jdt_org_ow2_asm_asm",
         "@rules_jdt_org_ow2_asm_asm_analysis",

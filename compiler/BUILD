@@ -34,6 +34,7 @@ java_library(
         "@rules_jdt_org_ow2_asm_asm_analysis",
         "@rules_jdt_org_ow2_asm_asm_commons",
         "@rules_jdt_org_ow2_asm_asm_tree",
+        "@rules_jdt_org_ow2_asm_asm_util",
     ],
     javacopts = [
         "--add-exports=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED",

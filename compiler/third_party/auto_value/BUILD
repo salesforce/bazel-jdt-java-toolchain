@@ -13,9 +13,9 @@ java_library(
     exported_plugins = [
         ":plugin",
     ],
+    visibility = ["//visibility:public"],
     exports = [
         "@rules_jdt_autovalue",
         "@rules_jdt_autovalue_annotations",
     ],
-    visibility = ["//visibility:public"],
 )

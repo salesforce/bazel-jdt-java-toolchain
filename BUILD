@@ -1,5 +1,5 @@
 load("@rules_java//java:defs.bzl", "java_binary")
-load("@bazel_tools//tools/jdk:default_java_toolchain.bzl", "default_java_toolchain", "VANILLA_TOOLCHAIN_CONFIGURATION")
+load("@bazel_tools//tools/jdk:default_java_toolchain.bzl", "VANILLA_TOOLCHAIN_CONFIGURATION", "default_java_toolchain")
 
 licenses(["notice"])
 

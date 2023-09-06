@@ -6,7 +6,7 @@ package(default_visibility = ["//visibility:public"])
 FILES = [
     "deps",
     "java_compilation",
-    "worker_protocol"
+    "worker_protocol",
 ]
 
 [proto_library(

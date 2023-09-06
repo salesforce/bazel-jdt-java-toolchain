@@ -6,9 +6,9 @@ java_library(
     srcs = glob(["src/main/worker/**/*.java"]),
     deps = [
         "//compiler/src/main/protobuf:worker_protocol_java_proto",
-        "@rules_jdt_guava",
         "@com_google_protobuf//:protobuf_java",
         "@com_google_protobuf//:protobuf_java_util",
+        "@rules_jdt_guava",
     ],
 )
 
@@ -16,26 +16,6 @@ java_library(
 java_library(
     name = "buildjar",
     srcs = glob(["src/main/buildjar/**/*.java"]),
-    deps = [
-        ":work_request_handlers",
-        ":ecj",
-        "//compiler/src/main/protobuf:deps_java_proto",
-        "//compiler/src/main/protobuf:java_compilation_java_proto",
-        "//compiler/src/main/protobuf:worker_protocol_java_proto",
-        "//compiler/third_party/auto_value:processor",
-        "@rules_jdt_jsr305",
-        "@rules_jdt_caffeine",
-        "@rules_jdt_guava",
-        "@rules_jdt_jacoco_core",
-        "@com_google_protobuf//:protobuf_java",
-    ],
-    runtime_deps = [
-        "@rules_jdt_org_ow2_asm_asm",
-        "@rules_jdt_org_ow2_asm_asm_analysis",
-        "@rules_jdt_org_ow2_asm_asm_commons",
-        "@rules_jdt_org_ow2_asm_asm_tree",
-        "@rules_jdt_org_ow2_asm_asm_util",
-    ],
     javacopts = [
         "--add-exports=jdk.compiler/com.sun.tools.javac.code=ALL-UNNAMED",
         "--add-exports=jdk.compiler/com.sun.tools.javac.comp=ALL-UNNAMED",
@@ -45,15 +25,40 @@ java_library(
         "--add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED",
     ],
     visibility = ["//:__subpackages__"],
+    runtime_deps = [
+        "@rules_jdt_org_ow2_asm_asm",
+        "@rules_jdt_org_ow2_asm_asm_analysis",
+        "@rules_jdt_org_ow2_asm_asm_commons",
+        "@rules_jdt_org_ow2_asm_asm_tree",
+        "@rules_jdt_org_ow2_asm_asm_util",
+    ],
+    deps = [
+        ":ecj",
+        ":work_request_handlers",
+        "//compiler/src/main/protobuf:deps_java_proto",
+        "//compiler/src/main/protobuf:java_compilation_java_proto",
+        "//compiler/src/main/protobuf:worker_protocol_java_proto",
+        "//compiler/third_party/auto_value:processor",
+        "@com_google_protobuf//:protobuf_java",
+        "@rules_jdt_caffeine",
+        "@rules_jdt_guava",
+        "@rules_jdt_jacoco_core",
+        "@rules_jdt_jsr305",
+    ],
 )
-
 
 # Eclipse Java Compiler
 java_library(
     name = "ecj",
     srcs = glob(["src/main/ecj/**/*.java"]),
-    resources = glob(["src/main/ecj/**"], exclude = ["**/*.java"]),
+    javacopts = [
+        "-nowarn",
+        "-XepDisableAllChecks",
+    ],
     resource_strip_prefix = "compiler/src/main/ecj/",
-    javacopts = ["-nowarn", "-XepDisableAllChecks"],
+    resources = glob(
+        ["src/main/ecj/**"],
+        exclude = ["**/*.java"],
+    ),
     #deps = ["//compiler/third_party/ecj:javax17api"],
 )

@@ -15,7 +15,6 @@ filegroup(
     srcs = ["turbine_direct_binary_deploy.jar"],
 )
 
-
 filegroup(
     name = "srcs",
     srcs = glob(["**"]),

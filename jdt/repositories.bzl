@@ -18,5 +18,3 @@ def rules_jdt_toolchains():
     It doesn't do anything at the moment.
     """
     pass
-
-

@@ -1,7 +1,9 @@
 """Starlark rules for building Java projects with JDT."""
+
 load(
-  "@bazel_tools//tools/jdk:default_java_toolchain.bzl",
-  "default_java_toolchain", "DEFAULT_TOOLCHAIN_CONFIGURATION"
+    "@bazel_tools//tools/jdk:default_java_toolchain.bzl",
+    "DEFAULT_TOOLCHAIN_CONFIGURATION",
+    "default_java_toolchain",
 )
 
 def default_jdt_toolchain(name, release, **kwargs):

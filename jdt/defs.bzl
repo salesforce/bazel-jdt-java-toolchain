@@ -20,7 +20,7 @@ def default_jdt_toolchain(name, release, **kwargs):
         header_compiler = [Label("//compiler/tools:TurbineDirect")],
         header_compiler_direct = [Label("//compiler/tools:TurbineDirect")],
         javabuilder = [Label("//compiler/export:JdtJavaBuilder")],
-        java_runtime = "@bazel_tools//tools/jdk:current_host_java_runtime",
+        java_runtime = "@bazel_tools//tools/jdk:current_java_runtime",
         source_version = "%s" % release,
         target_version = "%s" % release,
         **kwargs

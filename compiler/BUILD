@@ -13,6 +13,13 @@ java_library(
 )
 
 # Bazel's BuildJar
+
+java_import(
+    name = "bazel_org_jacoco_core",
+    jars = ["@bazel_org_jacoco_core_jar//file"],
+    srcjar = "@bazel_org_jacoco_core_srcjar//file",
+)
+
 java_library(
     name = "buildjar",
     srcs = glob(["src/main/buildjar/**/*.java"]),
@@ -33,6 +40,7 @@ java_library(
         "@rules_jdt_org_ow2_asm_asm_util",
     ],
     deps = [
+        ":bazel_org_jacoco_core",
         ":ecj",
         ":work_request_handlers",
         "//compiler/src/main/protobuf:deps_java_proto",
@@ -42,7 +50,6 @@ java_library(
         "@com_google_protobuf//:protobuf_java",
         "@rules_jdt_caffeine",
         "@rules_jdt_guava",
-        "@rules_jdt_jacoco_core",
         "@rules_jdt_jsr305",
     ],
 )

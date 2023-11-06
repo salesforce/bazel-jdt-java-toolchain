@@ -2,7 +2,7 @@ workspace(name = "rules_jdt")
 
 # --------------------------------------------------------------------------
 # Load http_archive
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file")
 
 # Load Bazel Skylib
 http_archive(
@@ -117,12 +117,25 @@ jvm_maven_import_external(
     server_urls = _DEFAULT_REPOSITORIES,
 )
 
-jvm_maven_import_external(
-    name = "rules_jdt_jacoco_core",
-    artifact = "org.jacoco:org.jacoco.core:0.8.7",
-    artifact_sha256 = "ad7739b5fb5969aa1a8aead3d74ed54dc82ed012f1f10f336bd1b96e71c1a13c",
-    licenses = ["notice"],
-    server_urls = _DEFAULT_REPOSITORIES,
+# here we need to use the same jacoco version/jars that bazel adds to the runtime classpath
+# if the jars are out of sync this error will be reported: NoClassDefFoundError: org/jacoco/agent/rt/internal_{commit-hash}/Offline
+# get the latest bazel jacoco jars from https://github.com/bazelbuild/bazel/tree/master/third_party/java/jacoco
+http_file(
+    name = "bazel_org_jacoco_core_jar",
+    downloaded_file_path = "org.jacoco.core-0.8.9-SNAPSHOT.jar",
+    urls = [
+        "https://github.com/bazelbuild/bazel/raw/master/third_party/java/jacoco/org.jacoco.core-0.8.9-SNAPSHOT.jar"
+    ],
+    sha256 = "434d2b652afbf48904172d3f078ed126220997f247d66d5ed93a8f5f107783b3",
+)
+
+http_file(
+    name = "bazel_org_jacoco_core_srcjar",
+    downloaded_file_path = "org.jacoco.core-0.8.9-SNAPSHOT-sources.jar",
+    urls = [
+        "https://github.com/bazelbuild/bazel/raw/master/third_party/java/jacoco/org.jacoco.core-0.8.9-SNAPSHOT-sources.jar"
+    ],
+    sha256 = "0d40cf9f67cc790727554d5474f8e2a9262aa2c99c6bada2defa97644eacf01d",
 )
 
 jvm_maven_import_external(

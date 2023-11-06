@@ -117,6 +117,9 @@ jvm_maven_import_external(
     server_urls = _DEFAULT_REPOSITORIES,
 )
 
+# here we need to use the same jacoco version/jars that bazel adds to the runtime classpath
+# if the jars are out of sync this error will be reported: NoClassDefFoundError: org/jacoco/agent/rt/internal_{commit-hash}/Offline
+# get the latest bazel jacoco jars from https://github.com/bazelbuild/bazel/tree/master/third_party/java/jacoco
 http_file(
     name = "bazel_org_jacoco_core_jar",
     downloaded_file_path = "org.jacoco.core-0.8.9-SNAPSHOT.jar",

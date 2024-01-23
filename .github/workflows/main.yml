@@ -51,7 +51,8 @@ jobs:
     strategy:
       fail-fast: false # we want all results
       matrix:
-        bazeljdk: [remotejdk_11, remotejdk_17, remotejdk_21, localjdk]
+        java_language_version: [11, 17, 21]
+        java_runtime_version: [remotejdk_11, remotejdk_17, remotejdk_21, localjdk]
         
     steps:
     - uses: actions/checkout@v2
@@ -79,7 +80,7 @@ jobs:
     - name: Test Compile & Test
       run: |
         cd examples/
-        "${GITHUB_WORKSPACE}/bin/bazel" build --java_runtime_version=${{ matrix.bazeljdk }} //...
-        "${GITHUB_WORKSPACE}/bin/bazel" test --java_runtime_version=${{ matrix.bazeljdk }} //...
+        "${GITHUB_WORKSPACE}/bin/bazel" build --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
+        "${GITHUB_WORKSPACE}/bin/bazel" test --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
       
       

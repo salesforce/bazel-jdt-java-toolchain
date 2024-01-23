@@ -1,8 +1,8 @@
 load(
     "@rules_java//toolchains:default_java_toolchain.bzl",
     "BASE_JDK9_JVM_OPTS",
-    "default_java_toolchain",
     "DEFAULT_TOOLCHAIN_CONFIGURATION",
+    "default_java_toolchain",
 )
 
 package(default_visibility = ["//visibility:public"])
@@ -28,4 +28,3 @@ RELEASES = (11, 17, 21)
     )
     for release in RELEASES
 ]
-

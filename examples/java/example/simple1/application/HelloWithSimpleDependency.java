@@ -13,4 +13,8 @@ public class HelloWithSimpleDependency {
         HelloWorld helloWorldResource = new HelloWorld();
         return helloWorldResource.getGreeting();
     }
+
+    private void unusedMethod() {
+        String unusedLocal = null;
+    }
 }

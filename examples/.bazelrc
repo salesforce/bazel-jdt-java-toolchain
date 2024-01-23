@@ -2,10 +2,20 @@
 build --java_language_version=11
 
 # Enable JDT toolchain
-build --extra_toolchains=@bazel_jdt_java_toolchain//jdt:all
+build --extra_toolchains=//:all
 
 # Short lived workers
-build --strategy=Javac=worker --worker_quit_after_build 
+build --strategy=Javac=worker --worker_quit_after_build
+
+# no bzlmod yet
+common --noenable_bzlmod
+
+# enable debug output
+build --toolchain_resolution_debug=@@bazel_tools//tools/jdk:
+build --explain=bazel_explain.log
+build --subcommands=pretty_print
+build --verbose_failures
+build --announce_rc
 
 # allow developers to tune the build with local overrides
 try-import %workspace%/.bazelrc-local

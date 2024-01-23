@@ -38,13 +38,48 @@ jobs:
         "${GITHUB_WORKSPACE}/bin/bazel" build :JdtJavaBuilder_deploy.jar
         cp -fv bazel-bin/JdtJavaBuilder_deploy.jar compiler/export/
 
-    - name: Build turbine_direct_binary_deploy.jar
-      run: |
-        "${GITHUB_WORKSPACE}/bin/bazel" build //compiler/third_party/turbine:turbine_direct_binary_deploy.jar
-        cp -fv bazel-bin/compiler/third_party/turbine/turbine_direct_binary_deploy.jar compiler/tools/
-
     - name: Test Compile
       run: |
         cd examples/
         "${GITHUB_WORKSPACE}/bin/bazel" build //...
+        "${GITHUB_WORKSPACE}/bin/bazel" test //...
 
+  test:
+    needs: [build]
+    
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        bazeljdk: [remotejdk_11, remotejdk_17, remotejdk_21]
+        
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Mount bazel cache
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/.cache/bazel
+          ~/.cache/bazelisk
+        key: bazel
+
+    - name: Install bazelisk
+      run: |
+        curl -LO "https://github.com/bazelbuild/bazelisk/releases/download/v1.10.1/bazelisk-linux-amd64"
+        mkdir -p "${GITHUB_WORKSPACE}/bin/"
+        mv bazelisk-linux-amd64 "${GITHUB_WORKSPACE}/bin/bazel"
+        chmod +x "${GITHUB_WORKSPACE}/bin/bazel"
+
+    - name: Build JdtJavaBuilder_deploy.jar
+      run: |
+        "${GITHUB_WORKSPACE}/bin/bazel" build :JdtJavaBuilder_deploy.jar
+        cp -fv bazel-bin/JdtJavaBuilder_deploy.jar compiler/export/
+
+    - name: Test Compile
+      run: |
+        cd examples/
+        "${GITHUB_WORKSPACE}/bin/bazel" build --java_runtime_version=${{ matrix.bazeljdk }} //...
+        "${GITHUB_WORKSPACE}/bin/bazel" test --java_runtime_version=${{ matrix.bazeljdk }} //...
+      
+      

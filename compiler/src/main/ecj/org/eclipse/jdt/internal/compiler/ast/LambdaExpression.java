@@ -63,7 +63,6 @@ import org.eclipse.jdt.internal.compiler.CompilationResult;
 import org.eclipse.jdt.internal.compiler.IErrorHandlingPolicy;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFileConstants;
 import org.eclipse.jdt.internal.compiler.codegen.CodeStream;
-import org.eclipse.jdt.internal.compiler.env.ICompilationUnit;
 import org.eclipse.jdt.internal.compiler.flow.ExceptionHandlingFlowContext;
 import org.eclipse.jdt.internal.compiler.flow.ExceptionInferenceFlowContext;
 import org.eclipse.jdt.internal.compiler.flow.FlowContext;
@@ -100,7 +99,6 @@ import org.eclipse.jdt.internal.compiler.lookup.TagBits;
 import org.eclipse.jdt.internal.compiler.lookup.TypeBinding;
 import org.eclipse.jdt.internal.compiler.lookup.TypeConstants;
 import org.eclipse.jdt.internal.compiler.lookup.TypeIds;
-import org.eclipse.jdt.internal.compiler.lookup.VariableBinding;
 import org.eclipse.jdt.internal.compiler.lookup.WildcardBinding;
 import org.eclipse.jdt.internal.compiler.lookup.Scope.Substitutor;
 import org.eclipse.jdt.internal.compiler.parser.Parser;
@@ -121,17 +119,18 @@ public class LambdaExpression extends FunctionalExpression implements IPolyExpre
 	boolean voidCompatible = true;
 	boolean valueCompatible = false;
 	boolean returnsValue;
-	private boolean requiresGenericSignature;
+	private final boolean requiresGenericSignature;
 	boolean returnsVoid;
 	public LambdaExpression original = this;
 	private boolean committed = false;
 	public SyntheticArgumentBinding[] outerLocalVariables = NO_SYNTHETIC_ARGUMENTS;
+	public Map<SourceTypeBinding, SyntheticArgumentBinding> mapSyntheticEnclosingTypes = new HashMap<>();
+	public boolean hasOuterClassMemberReference = false;
 	private int outerLocalVariablesSlotSize = 0;
 	private boolean assistNode = false;
 	private boolean hasIgnoredMandatoryErrors = false;
 	private ReferenceBinding classType;
 	private Set thrownExceptions;
-	public char[] text;  // source representation of the lambda.
 	private static final SyntheticArgumentBinding [] NO_SYNTHETIC_ARGUMENTS = new SyntheticArgumentBinding[0];
 	private static final Block NO_BODY = new Block(0);
 	private HashMap<TypeBinding, LambdaExpression> copiesPerTargetType;
@@ -139,6 +138,7 @@ public class LambdaExpression extends FunctionalExpression implements IPolyExpre
 	public InferenceContext18 inferenceContext; // when performing tentative resolve keep a back reference to the driving context
 	private Map<Integer/*sourceStart*/, LocalTypeBinding> localTypes; // support look-up of a local type from this lambda copy
 	public boolean argumentsTypeVar = false;
+	int firstLocalLocal; // analysis index of first local variable (if any) post parameter(s) in the lambda; ("local local" as opposed to "outer local")
 
 
 	public LambdaExpression(CompilationResult compilationResult, boolean assistNode, boolean requiresGenericSignature) {
@@ -213,9 +213,20 @@ public class LambdaExpression extends FunctionalExpression implements IPolyExpre
 				syntheticArgument.resolvedPosition++;
 			}
 			signature.append(syntheticArgument.type.signature());
-			LocalVariableBinding capturedOuterLocal = syntheticArgument.actualOuterLocalVariable;
-			VariableBinding[] path = currentScope.getEmulationPath(capturedOuterLocal);
-			codeStream.generateOuterAccess(path, this, capturedOuterLocal, currentScope);
+			Object[] path;
+			Binding target;
+			if (syntheticArgument.actualOuterLocalVariable != null) {
+				LocalVariableBinding capturedOuterLocal = syntheticArgument.actualOuterLocalVariable;
+				path = currentScope.getEmulationPath(capturedOuterLocal);
+				target = capturedOuterLocal;
+			} else {
+				path = currentScope.getEmulationPath(
+						(ReferenceBinding) syntheticArgument.type,
+						false /*not only exact match (that is, allow compatible)*/,
+						false);
+				target = syntheticArgument.type;
+			}
+			codeStream.generateOuterAccess(path, this, target, currentScope);
 		}
 		signature.append(')');
 		if (this.expectedType instanceof IntersectionTypeBinding18) {
@@ -286,6 +297,13 @@ public class LambdaExpression extends FunctionalExpression implements IPolyExpre
 							haveDescriptor ? this.descriptor.thrownExceptions : Binding.NO_EXCEPTIONS,
 							blockScope.enclosingSourceType());
 		this.binding.typeVariables = Binding.NO_TYPE_VARIABLES;
+
+		MethodScope enm = this.scope.namedMethodScope();
+		MethodBinding enmb = enm == null ? null : enm.referenceMethodBinding();
+		if (enmb != null && enmb.isViewedAsDeprecated()) {
+			this.binding.modifiers |= ExtraCompilerModifiers.AccDeprecatedImplicitly;
+			this.binding.tagBits |= enmb.tagBits & TagBits.AnnotationTerminallyDeprecated;
+		}
 
 		boolean argumentsHaveErrors = false;
 		if (haveDescriptor) {
@@ -451,6 +469,7 @@ public class LambdaExpression extends FunctionalExpression implements IPolyExpre
 
 		this.binding.modifiers &= ~ExtraCompilerModifiers.AccUnresolved;
 
+		this.firstLocalLocal = this.scope.outerMostMethodScope().analysisIndex;
 		if (this.body instanceof Expression && ((Expression) this.body).isTrulyExpression()) {
 			Expression expression = (Expression) this.body;
 			new ReturnStatement(expression, expression.sourceStart, expression.sourceEnd, true).resolve(this.scope); // :-) ;-)
@@ -521,22 +540,13 @@ public class LambdaExpression extends FunctionalExpression implements IPolyExpre
 						freshInferenceContext.cleanUp();
 					}
 				} else {
-					return findGroundTargetTypeForElidedLambda(blockScope, withWildCards);
+					return withWildCards.getNonWildcardParameterization(blockScope);
 				}
 			}
 			if (targetType instanceof ReferenceBinding)
 				return (ReferenceBinding) targetType;
 		}
 		return null;
-	}
-
-	public ReferenceBinding findGroundTargetTypeForElidedLambda(BlockScope blockScope, ParameterizedTypeBinding withWildCards) {
-		// non-wildcard parameterization (9.8) of the target type
-		TypeBinding[] types = withWildCards.getNonWildcardParameterization(blockScope);
-		if (types == null)
-			return null;
-		ReferenceBinding genericType = withWildCards.genericType();
-		return blockScope.environment().createParameterizedType(genericType, types, withWildCards.enclosingType());
 	}
 
 	@Override
@@ -552,7 +562,7 @@ public class LambdaExpression extends FunctionalExpression implements IPolyExpre
 		try {
 			this.body.analyseCode(this.scope,
 									 ehfc = new ExceptionInferenceFlowContext(null, this, Binding.NO_EXCEPTIONS, null, this.scope, FlowInfo.DEAD_END),
-									 UnconditionalFlowInfo.fakeInitializedFlowInfo(this.scope.outerMostMethodScope().analysisIndex, this.scope.referenceType().maxFieldCount));
+									 UnconditionalFlowInfo.fakeInitializedFlowInfo(this.firstLocalLocal, this.scope.referenceType().maxFieldCount));
 			this.thrownExceptions = ehfc.extendedExceptions == null ? Collections.emptySet() : new HashSet<TypeBinding>(ehfc.extendedExceptions);
 		} catch (Exception e) {
 			// drop silently.
@@ -985,6 +995,9 @@ public class LambdaExpression extends FunctionalExpression implements IPolyExpre
 				copy = copy();
 				if (copy == null)
 					throw new CopyFailureException();
+				if (InferenceContext18.DEBUG) {
+					System.out.println("Copy lambda "+this+" for target "+targetType.debugName()); //$NON-NLS-1$ //$NON-NLS-2$
+				}
 
 				copy.setExpressionContext(this.expressionContext);
 				copy.setExpectedType(targetType);
@@ -1113,17 +1126,23 @@ public class LambdaExpression extends FunctionalExpression implements IPolyExpre
 		return false;
 	}
 
+	/**
+	 * @return a virgin copy of `this' by reparsing the stashed textual form.
+	 */
 	LambdaExpression copy() {
 		final Parser parser = new Parser(this.enclosingScope.problemReporter(), false);
-		final ICompilationUnit compilationUnit = this.compilationResult.getCompilationUnit();
-		char[] source = compilationUnit != null ? compilationUnit.getContents() : this.text;
-		LambdaExpression copy =  (LambdaExpression) parser.parseLambdaExpression(source, compilationUnit != null ? this.sourceStart : 0, this.sourceEnd - this.sourceStart + 1,
+		char [] source = new char [this.sourceEnd+1];
+		System.arraycopy(this.text, 0, source, this.sourceStart, this.sourceEnd - this.sourceStart + 1);
+		LambdaExpression copy =  (LambdaExpression) parser.parseLambdaExpression(source,this.sourceStart, this.sourceEnd - this.sourceStart + 1,
 										this.enclosingScope.referenceCompilationUnit(), false /* record line separators */);
 
 		if (copy != null) { // ==> syntax errors == null
+			if (copy.sourceStart != this.sourceStart || copy.sourceEnd != this.sourceEnd)
+				return null; // something wrong
 			copy.original = this;
 			copy.assistNode = this.assistNode;
 			copy.enclosingScope = this.enclosingScope;
+			copy.text = this.text; // discard redundant textual copy
 		}
 		return copy;
 	}
@@ -1362,6 +1381,36 @@ public class LambdaExpression extends FunctionalExpression implements IPolyExpre
 		}
 	}
 
+	public SyntheticArgumentBinding addSyntheticArgument(ReferenceBinding enclosingType) {
+
+		if (this.original != this || this.binding == null)
+			return null; // Do not bother tracking outer locals for clones created during overload resolution.
+
+		SyntheticArgumentBinding syntheticLocal = null;
+		int newSlot = this.outerLocalVariables.length;
+		System.arraycopy(this.outerLocalVariables, 0, this.outerLocalVariables = new SyntheticArgumentBinding[newSlot + 1], 0, newSlot);
+		this.outerLocalVariables[newSlot] = syntheticLocal = new SyntheticArgumentBinding(enclosingType);
+		syntheticLocal.resolvedPosition = this.outerLocalVariablesSlotSize; // may need adjusting later if we need to generate an instance method for the lambda.
+		syntheticLocal.declaringScope = this.scope;
+		int parameterCount = this.binding.parameters.length;
+		TypeBinding [] newParameters = new TypeBinding[parameterCount + 1];
+		newParameters[newSlot] = enclosingType;
+		for (int i = 0, j = 0; i < parameterCount; i++, j++) {
+			if (i == newSlot) j++;
+			newParameters[j] = this.binding.parameters[i];
+		}
+		this.binding.parameters = newParameters;
+		switch (syntheticLocal.type.id) {
+			case TypeIds.T_long :
+			case TypeIds.T_double :
+				this.outerLocalVariablesSlotSize  += 2;
+				break;
+			default :
+				this.outerLocalVariablesSlotSize++;
+				break;
+		}
+		return syntheticLocal;
+	}
 	public SyntheticArgumentBinding getSyntheticArgument(LocalVariableBinding actualOuterLocalVariable) {
 		for (int i = 0, length = this.outerLocalVariables == null ? 0 : this.outerLocalVariables.length; i < length; i++)
 			if (this.outerLocalVariables[i].actualOuterLocalVariable == actualOuterLocalVariable)

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2021 IBM Corporation and others.
+ * Copyright (c) 2000, 2023 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -122,10 +122,10 @@ import org.eclipse.jdt.internal.compiler.util.Util;
 public class Main implements ProblemSeverities, SuffixConstants {
 
 	public static class Logger {
-		private PrintWriter err;
+		private final PrintWriter err;
 		private PrintWriter log;
-		private Main main;
-		private PrintWriter out;
+		private final Main main;
+		private final PrintWriter out;
 		int tagBits;
 		private static final String CLASS = "class"; //$NON-NLS-1$
 		private static final String CLASS_FILE = "classfile"; //$NON-NLS-1$
@@ -194,7 +194,7 @@ public class Main implements ProblemSeverities, SuffixConstants {
 		private static final String INFO = "INFO"; //$NON-NLS-1$
 
 		public static final int XML = 1;
-		private static final String XML_DTD_DECLARATION = "<!DOCTYPE compiler PUBLIC \"-//Eclipse.org//DTD Eclipse JDT 3.2.006 Compiler//EN\" \"http://www.eclipse.org/jdt/core/compiler_32_006.dtd\">"; //$NON-NLS-1$
+		private static final String XML_DTD_DECLARATION = "<!DOCTYPE compiler PUBLIC \"-//Eclipse.org//DTD Eclipse JDT 3.2.006 Compiler//EN\" \"https://www.eclipse.org/jdt/core/compiler_32_006.dtd\">"; //$NON-NLS-1$
 		static {
 			try {
 				Class<?> c = IProblem.class;
@@ -253,9 +253,6 @@ public class Main implements ProblemSeverities, SuffixConstants {
 			}
 		}
 
-		/**
-		 *
-		 */
 		public void compiling() {
 			printlnOut(this.main.bind("progress.compiling")); //$NON-NLS-1$
 		}
@@ -718,9 +715,6 @@ public class Main implements ProblemSeverities, SuffixConstants {
 			this.printlnErr(this.main.bind("configure.incorrectVMVersionforAPT")); //$NON-NLS-1$
 		}
 
-		/**
-		 *
-		 */
 		public void logNoClassFileCreated(String outputDir, String relativeFileName, IOException e) {
 			if ((this.tagBits & Logger.XML) != 0) {
 				HashMap<String, Object> parameters = new HashMap<>();
@@ -740,9 +734,6 @@ public class Main implements ProblemSeverities, SuffixConstants {
 				}));
 		}
 
-		/**
-		 * @param exportedClassFilesCounter
-		 */
 		public void logNumberOfClassFilesGenerated(int exportedClassFilesCounter) {
 			if ((this.tagBits & Logger.XML) != 0) {
 				HashMap<String, Object> parameters = new HashMap<>();
@@ -909,11 +900,6 @@ public class Main implements ProblemSeverities, SuffixConstants {
 			return localErrorCount;
 		}
 
-		/**
-		 * @param globalProblemsCount
-		 * @param globalErrorsCount
-		 * @param globalWarningsCount
-		 */
 		public void logProblemsSummary(int globalProblemsCount,
 			int globalErrorsCount, int globalWarningsCount, int globalInfoCount, int globalTasksCount) {
 			if ((this.tagBits & Logger.XML) != 0) {
@@ -1002,9 +988,6 @@ public class Main implements ProblemSeverities, SuffixConstants {
 			}
 		}
 
-		/**
-		 *
-		 */
 		public void logProgress() {
 			printOut('.');
 		}
@@ -1019,9 +1002,6 @@ public class Main implements ProblemSeverities, SuffixConstants {
 			printlnOut(this.main.bind("compile.repetition", //$NON-NLS-1$
 				String.valueOf(i + 1), String.valueOf(repetitions)));
 		}
-		/**
-		 * @param compilerStats
-		 */
 		public void logTiming(CompilerStats compilerStats) {
 			long time = compilerStats.elapsedTime();
 			long lineCount = compilerStats.lineCount;
@@ -1065,7 +1045,6 @@ public class Main implements ProblemSeverities, SuffixConstants {
 
 		/**
 		 * Print the usage of the compiler
-		 * @param usage
 		 */
 		public void logUsage(String usage) {
 			printlnOut(usage);
@@ -1221,9 +1200,6 @@ public class Main implements ProblemSeverities, SuffixConstants {
 			}
 		}
 
-		/**
-		 *
-		 */
 		public void printNewLine() {
 			this.out.println();
 		}
@@ -1272,7 +1248,7 @@ public class Main implements ProblemSeverities, SuffixConstants {
 			try {
 				int index = logFileName.lastIndexOf('.');
 				if (index != -1) {
-					if (logFileName.substring(index).toLowerCase().equals(".xml")) { //$NON-NLS-1$
+					if (logFileName.substring(index).equalsIgnoreCase(".xml")) { //$NON-NLS-1$
 						this.log = new GenericXMLWriter(new OutputStreamWriter(new FileOutputStream(logFileName, false), Util.UTF_8), Util.LINE_SEPARATOR, true);
 						this.tagBits |= Logger.XML;
 						// insert time stamp as comment
@@ -3167,6 +3143,18 @@ private String optionStringToVersion(String currentArg) {
 		case "17": //$NON-NLS-1$
 		case "17.0": //$NON-NLS-1$
 			return CompilerOptions.VERSION_17;
+		case "18": //$NON-NLS-1$
+		case "18.0": //$NON-NLS-1$
+			return CompilerOptions.VERSION_18;
+		case "19": //$NON-NLS-1$
+		case "19.0": //$NON-NLS-1$
+			return CompilerOptions.VERSION_19;
+		case "20": //$NON-NLS-1$
+		case "20.0": //$NON-NLS-1$
+			return CompilerOptions.VERSION_20;
+		case "21": //$NON-NLS-1$
+		case "21.0": //$NON-NLS-1$
+			return CompilerOptions.VERSION_21;
 		default:
 			return null;
 	}
@@ -3531,6 +3519,11 @@ private void processAddonModuleOptions(FileSystem env) {
 		AddExport addExport = ModuleFinder.extractAddonExport(option);
 		if (addExport != null) {
 			String modName = addExport.sourceModuleName;
+			for (Classpath classpath : this.checkedClasspaths) {
+				if (classpath.forbidsExportFrom(modName)) {
+					throw new IllegalArgumentException(this.bind("configure.illegalExportFromSystemModule", modName)); //$NON-NLS-1$
+				}
+			}
 			IPackageExport export = addExport.export;
 			IPackageExport[] existing = exports.get(modName);
 			if (existing == null) {
@@ -3870,7 +3863,7 @@ protected void handleWarningToken(String token, boolean isEnabling) {
 protected void handleErrorToken(String token, boolean isEnabling) {
 	handleErrorOrWarningToken(token, isEnabling, ProblemSeverities.Error);
 }
-protected void setSeverity(String compilerOptions, int severity, boolean isEnabling) {
+private void setSeverity(String compilerOptions, int severity, boolean isEnabling) {
 	if (isEnabling) {
 		switch(severity) {
 			case ProblemSeverities.Error :

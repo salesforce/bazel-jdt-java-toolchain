@@ -81,7 +81,10 @@ public class RecordComponent extends AbstractVariableDeclaration {
 
 	public void getAllAnnotationContexts(int targetType, List<AnnotationContext> allAnnotationContexts) {
 		AnnotationCollector collector = new AnnotationCollector(this, targetType, allAnnotationContexts);
-		this.traverse(collector, (BlockScope) null);
+		for (int i = 0, max = this.annotations.length; i < max; i++) {
+			Annotation annotation = this.annotations[i];
+			annotation.traverse(collector, (BlockScope) null);
+		}
 	}
 
 	public boolean isVarArgs() {
@@ -97,6 +100,18 @@ public class RecordComponent extends AbstractVariableDeclaration {
 				TypeBinding resolvedAnnotationType = this.annotations[i].resolvedType;
 				if (resolvedAnnotationType != null && (resolvedAnnotationType.getAnnotationTagBits() & TagBits.AnnotationForTypeUse) != 0) {
 					this.bits |= ASTNode.HasTypeAnnotations;
+					// also update the accessor's return type:
+					if (this.binding != null && this.binding.declaringRecord != null) {
+						for (MethodBinding methodBinding : this.binding.declaringRecord.methods()) {
+							if (methodBinding instanceof SyntheticMethodBinding) {
+								SyntheticMethodBinding smb = (SyntheticMethodBinding) methodBinding;
+								if (smb.purpose == SyntheticMethodBinding.FieldReadAccess && smb.recordComponentBinding == this.binding) {
+									smb.returnType = this.binding.type;
+									break;
+								}
+							}
+						}
+					}
 					break;
 				}
 			}

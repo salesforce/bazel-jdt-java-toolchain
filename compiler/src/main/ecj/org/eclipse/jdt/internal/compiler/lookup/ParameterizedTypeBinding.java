@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2005, 2020 IBM Corporation and others.
+ * Copyright (c) 2005, 2023 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -47,12 +47,12 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.compiler.lookup;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 
 import org.eclipse.jdt.core.compiler.CharOperation;
-import org.eclipse.jdt.core.compiler.InvalidInputException;
 import org.eclipse.jdt.internal.compiler.ast.ASTNode;
 import org.eclipse.jdt.internal.compiler.ast.NullAnnotationMatching;
 import org.eclipse.jdt.internal.compiler.ast.ParameterizedSingleTypeReference;
@@ -74,6 +74,7 @@ public class ParameterizedTypeBinding extends ReferenceBinding implements Substi
 	public ReferenceBinding superclass;
 	public ReferenceBinding[] superInterfaces;
 	public FieldBinding[] fields;
+	protected RecordComponentBinding[] components;
 	public ReferenceBinding[] memberTypes;
 	public MethodBinding[] methods;
 	protected ReferenceBinding enclosingType;
@@ -113,7 +114,31 @@ public class ParameterizedTypeBinding extends ReferenceBinding implements Substi
 	public boolean isParameterizedType() {
 		return true;
 	}
+	@Override
+	public boolean isRecord() {
+		return this.type.isRecord();
+	}
+	@Override
+	public RecordComponentBinding[] components() {
+		if ((this.extendedTagBits & ExtendedTagBits.AreRecordComponentsComplete) != 0)
+			return this.components;
 
+		try {
+			RecordComponentBinding[] originalRecordComponents = this.type.components();
+			int length = originalRecordComponents.length;
+			RecordComponentBinding[] parameterizedRecordComponents = new RecordComponentBinding[length];
+			for (int i = 0; i < length; i++)
+				// substitute all record components, so as to get updated declaring class at least
+				parameterizedRecordComponents[i] = new ParameterizedRecordComponentBinding(this, originalRecordComponents[i]);
+			this.components = parameterizedRecordComponents;
+		} finally {
+			// if the original record components cannot be retrieved (ex. AbortCompilation), then assume we do not have any record components
+			if (this.components == null)
+				this.components = Binding.NO_COMPONENTS;
+			this.extendedTagBits |= ExtendedTagBits.AreRecordComponentsComplete;
+		}
+		return this.components;
+	}
 	/**
 	 * Iterate type arguments, and validate them according to corresponding variable bounds.
 	 */
@@ -796,6 +821,32 @@ public class ParameterizedTypeBinding extends ReferenceBinding implements Substi
 		return ReferenceBinding.binarySearch(fieldName, this.fields);
 	}
 
+	 /**
+	 * @see org.eclipse.jdt.internal.compiler.lookup.ReferenceBinding#getComponent(char[], boolean)
+	 */
+	@Override
+	public RecordComponentBinding getComponent(char[] name, boolean needResolve) {
+		if (((this.extendedTagBits & ExtendedTagBits.AreRecordComponentsComplete) == 0)) {
+			for (RecordComponentBinding rcb : this.type.unResolvedComponents()) {
+				if (CharOperation.equals(name, rcb.name)) {
+					return rcb;
+				}
+			}
+			return null;
+		}
+		components(); // ensure record components have been initialized
+		return getRecordComponent(name);
+	}
+	@Override
+	public RecordComponentBinding getRecordComponent(char[] name) {
+		if (this.components != null) {
+			for (RecordComponentBinding rcb : this.components) {
+				if (CharOperation.equals(name, rcb.name))
+					return rcb;
+			}
+		}
+		return null;
+	}
 	/**
 	 * @see org.eclipse.jdt.internal.compiler.lookup.ReferenceBinding#getMethods(char[])
 	 */
@@ -1054,6 +1105,28 @@ public class ParameterizedTypeBinding extends ReferenceBinding implements Substi
 		return isRawType();
 	}
 
+	@Override
+	public ReferenceBinding[] permittedTypes() {
+		ReferenceBinding[] permTypes = this.type.permittedTypes();
+		List<ReferenceBinding> applicablePermTypes = new ArrayList<>();
+		for (ReferenceBinding pt : permTypes) {
+			ReferenceBinding permittedTypeAvatar = pt;
+			if (pt.isRawType()) {
+				ReferenceBinding ptRef = pt.actualType();
+				ReferenceBinding enclosingType1 = ptRef.enclosingType();
+				if (enclosingType1 != null) {
+					// don't use TypeSystem.getParameterizedType below as this is just for temporary check.
+					ParameterizedTypeBinding ptb = new ParameterizedTypeBinding(ptRef, this.arguments, ptRef.enclosingType(), this.environment);
+					ptb.superclass();
+					ptb.superInterfaces();
+					permittedTypeAvatar = ptb;
+				}
+			}
+			if (permittedTypeAvatar.isCompatibleWith(this))
+				applicablePermTypes.add(pt);
+		}
+		return applicablePermTypes.toArray(new ReferenceBinding[0]);
+	}
 	@Override
 	public TypeBinding unannotated() {
 		return this.hasTypeAnnotations() ? this.environment.getUnannotatedType(this) : this;
@@ -1549,6 +1622,20 @@ public class ParameterizedTypeBinding extends ReferenceBinding implements Substi
 				buffer.append("NULL SUPERINTERFACES"); //$NON-NLS-1$
 			}
 
+			if (isRecord() && this.components != null) {
+				if (this.components != Binding.NO_COMPONENTS) {
+					buffer.append("\n\t("); //$NON-NLS-1$
+					for (int i = 0, length = this.components.length; i < length; i++) {
+						if (i  > 0)
+							buffer.append(", "); //$NON-NLS-1$
+						buffer.append((this.components[i] != null) ? this.components[i].toString() : "NULL TYPE"); //$NON-NLS-1$
+					}
+					if (this.components.length > 0)
+						buffer.append(")"); //$NON-NLS-1$
+				}
+			} else {
+				buffer.append("NULL COMPONENTS"); //$NON-NLS-1$
+			}
 			if (enclosingType() != null) {
 				buffer.append("\n\tenclosing type : "); //$NON-NLS-1$
 				buffer.append(enclosingType().debugName());
@@ -1609,9 +1696,14 @@ public class ParameterizedTypeBinding extends ReferenceBinding implements Substi
 		return this.fields;
 	}
 	@Override
-	protected MethodBinding[] getInterfaceAbstractContracts(Scope scope, boolean replaceWildcards, boolean filterDefaultMethods) throws InvalidInputException {
+	public RecordComponentBinding[] unResolvedComponents() {
+		return this.components;
+	}
+
+	@Override
+	protected MethodBinding[] getInterfaceAbstractContracts(Scope scope, boolean replaceWildcards, boolean filterDefaultMethods) throws InvalidBindingException {
 		if (replaceWildcards) {
-			TypeBinding[] types = getNonWildcardParameterization(scope);
+			TypeBinding[] types = getNonWildcardParameters(scope);
 			if (types == null)
 				return new MethodBinding[] { new ProblemMethodBinding(TypeConstants.ANONYMOUS_METHOD, null, ProblemReasons.NotAWellFormedParameterizedType) };
 			for (int i = 0; i < types.length; i++) {
@@ -1651,7 +1743,7 @@ public class ParameterizedTypeBinding extends ReferenceBinding implements Substi
 		ParameterizedTypeBinding declaringType = null;
 		TypeBinding [] types = this.arguments;
 		if (replaceWildcards) {
-			types = getNonWildcardParameterization(scope);
+			types = getNonWildcardParameters(scope);
 			if (types == null)
 				return this.singleAbstractMethod[index] = new ProblemMethodBinding(TypeConstants.ANONYMOUS_METHOD, null, ProblemReasons.NotAWellFormedParameterizedType);
 		} else if (types == null) {
@@ -1683,8 +1775,8 @@ public class ParameterizedTypeBinding extends ReferenceBinding implements Substi
 		return this.singleAbstractMethod[index];
 	}
 
-	// from JLS 9.8
-	public TypeBinding[] getNonWildcardParameterization(Scope scope) {
+	// from JLS 9.9
+	public TypeBinding[] getNonWildcardParameters(Scope scope) {
 		// precondition: isValidBinding()
 		TypeBinding[] typeArguments = this.arguments; 							// A1 ... An
 		if (typeArguments == null)
@@ -1752,6 +1844,16 @@ public class ParameterizedTypeBinding extends ReferenceBinding implements Substi
 		}
 		return types;
 	}
+
+	public ReferenceBinding getNonWildcardParameterization(BlockScope blockScope) {
+		// non-wildcard parameterization (9.9) of the target type
+		TypeBinding[] types = getNonWildcardParameters(blockScope);
+		if (types == null)
+			return null;
+		ReferenceBinding genericType = genericType();
+		return blockScope.environment().createParameterizedType(genericType, types, enclosingType());
+	}
+
 	@Override
 	public long updateTagBits() {
 		if (this.arguments != null)

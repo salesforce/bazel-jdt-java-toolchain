@@ -26,8 +26,10 @@ package org.eclipse.jdt.internal.compiler.ast;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -235,7 +237,6 @@ public MethodDeclaration addMissingAbstractMethodFor(MethodBinding methodBinding
 
 /**
  *	Flow analysis for a local innertype
- *
  */
 @Override
 public FlowInfo analyseCode(BlockScope currentScope, FlowContext flowContext, FlowInfo flowInfo) {
@@ -258,7 +259,6 @@ public FlowInfo analyseCode(BlockScope currentScope, FlowContext flowContext, Fl
 
 /**
  *	Flow analysis for a member innertype
- *
  */
 public void analyseCode(ClassScope enclosingClassScope) {
 	if (this.ignoreFurtherInvestigation)
@@ -274,7 +274,6 @@ public void analyseCode(ClassScope enclosingClassScope) {
 
 /**
  *	Flow analysis for a local member innertype
- *
  */
 public void analyseCode(ClassScope currentScope, FlowContext flowContext, FlowInfo flowInfo) {
 	if (this.ignoreFurtherInvestigation)
@@ -295,7 +294,6 @@ public void analyseCode(ClassScope currentScope, FlowContext flowContext, FlowIn
 
 /**
  *	Flow analysis for a package member type
- *
  */
 public void analyseCode(CompilationUnitScope unitScope) {
 	if (this.ignoreFurtherInvestigation)
@@ -1320,7 +1318,7 @@ public void resolve() {
 			}
 		}
 
-		if ((this.bits & ASTNode.UndocumentedEmptyBlock) != 0) {
+		if ((this.bits & ASTNode.UndocumentedEmptyBlock) != 0 && this.nRecordComponents == 0) {
 			this.scope.problemReporter().undocumentedEmptyBlock(this.bodyStart-1, this.bodyEnd);
 		}
 		boolean needSerialVersion =
@@ -1436,6 +1434,9 @@ public void resolve() {
 						 ((Initializer) field).lastVisibleFieldID = lastVisibleFieldID + 1;
 						break;
 				}
+				if (this.isRecord()) {
+					field.javadoc = this.javadoc;
+				}
 				field.resolve(field.isStatic() ? this.staticInitializerScope : this.initializerScope);
 			}
 		}
@@ -1512,14 +1513,15 @@ public void resolve() {
 		} else if (!sourceType.isLocalType()) {
 			// Set javadoc visibility
 			int visibility = sourceType.modifiers & ExtraCompilerModifiers.AccVisibilityMASK;
-			ProblemReporter reporter = this.scope.problemReporter();
-			int severity = reporter.computeSeverity(IProblem.JavadocMissing);
-			if (severity != ProblemSeverities.Ignore) {
-				if (this.enclosingType != null) {
-					visibility = Util.computeOuterMostVisibility(this.enclosingType, visibility);
+			try (ProblemReporter reporter = this.scope.problemReporter()) {
+				int severity = reporter.computeSeverity(IProblem.JavadocMissing);
+				if (severity != ProblemSeverities.Ignore) {
+					if (this.enclosingType != null) {
+						visibility = Util.computeOuterMostVisibility(this.enclosingType, visibility);
+					}
+					int javadocModifiers = (this.binding.modifiers & ~ExtraCompilerModifiers.AccVisibilityMASK) | visibility;
+					reporter.javadocMissing(this.sourceStart, this.sourceEnd, severity, javadocModifiers);
 				}
-				int javadocModifiers = (this.binding.modifiers & ~ExtraCompilerModifiers.AccVisibilityMASK) | visibility;
-				reporter.javadocMissing(this.sourceStart, this.sourceEnd, severity, javadocModifiers);
 			}
 		}
 		updateNestHost();
@@ -1641,7 +1643,6 @@ public void tagAsHavingIgnoredMandatoryErrors(int problemId) {
 
 /**
  *	Iteration for a package member type
- *
  */
 public void traverse(ASTVisitor visitor, CompilationUnitScope unitScope) {
 	try {
@@ -1773,7 +1774,6 @@ public void traverse(ASTVisitor visitor, BlockScope blockScope) {
 
 /**
  *	Iteration for a member innertype
- *
  */
 public void traverse(ASTVisitor visitor, ClassScope classScope) {
 	try {
@@ -1880,5 +1880,58 @@ public boolean isPackageInfo() {
 public boolean isSecondary() {
 	return (this.bits & ASTNode.IsSecondaryType) != 0;
 }
+public void updateSupertypesWithAnnotations(Map<ReferenceBinding,ReferenceBinding> outerUpdates) {
+	if (this.binding == null)
+		return;
+	this.binding.getAnnotationTagBits();
+	if (this.binding instanceof MemberTypeBinding) {
+		((MemberTypeBinding) this.binding).updateDeprecationFromEnclosing();
+	}
+	Map<ReferenceBinding,ReferenceBinding> updates = new HashMap<>();
+	if (this.typeParameters != null) {
+		for (TypeParameter typeParameter : this.typeParameters) {
+			typeParameter.updateWithAnnotations(this.scope); // TODO: need to integrate with outerUpdates/updates?
+		}
+	}
+	if (this.superclass != null) {
+		this.binding.superclass = updateWithAnnotations(this.superclass, this.binding.superclass, outerUpdates, updates);
+	}
+	if (this.superInterfaces != null) {
+		ReferenceBinding[] superIfcBindings = this.binding.superInterfaces;
+		boolean areBindingsConsistent = superIfcBindings != null && superIfcBindings.length == this.superInterfaces.length;
+		for (int i = 0; i < this.superInterfaces.length; i++) {
+			ReferenceBinding previous = areBindingsConsistent ? superIfcBindings[i] : null;
+			ReferenceBinding updated = updateWithAnnotations(this.superInterfaces[i], previous, outerUpdates, updates);
+			if (areBindingsConsistent)
+				superIfcBindings[i] = updated;
+		}
+	}
+	if (this.memberTypes != null) {
+		for (TypeDeclaration memberTypesDecl : this.memberTypes) {
+			memberTypesDecl.updateSupertypesWithAnnotations(updates);
+		}
+	}
+}
 
+protected ReferenceBinding updateWithAnnotations(TypeReference typeRef, ReferenceBinding previousType,
+		Map<ReferenceBinding, ReferenceBinding> outerUpdates, Map<ReferenceBinding, ReferenceBinding> updates)
+{
+	typeRef.updateWithAnnotations(this.scope, 0);
+	ReferenceBinding updatedType = (ReferenceBinding) typeRef.resolvedType;
+	if (updatedType instanceof ParameterizedTypeBinding) {
+		ParameterizedTypeBinding ptb = (ParameterizedTypeBinding) updatedType;
+		if (updatedType.enclosingType() != null && outerUpdates.containsKey(ptb.enclosingType())) {
+			updatedType = this.scope.environment().createParameterizedType(ptb.genericType(), ptb.typeArguments(), outerUpdates.get(ptb.enclosingType()));
+		}
+	}
+	if (updatedType == null || !updatedType.isValidBinding())
+		return previousType;
+	if (previousType != null) {
+		if (previousType.id == TypeIds.T_JavaLangObject && ((this.binding.tagBits & TagBits.HierarchyHasProblems) != 0))
+			return previousType; // keep this cycle breaker
+		if (previousType != updatedType) //$IDENTITY-COMPARISON$
+			updates.put(previousType, updatedType);
+	}
+	return updatedType;
+}
 }

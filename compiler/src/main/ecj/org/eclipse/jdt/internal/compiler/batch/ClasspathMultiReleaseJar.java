@@ -2,27 +2,24 @@ package org.eclipse.jdt.internal.compiler.batch;
 
 import java.io.File;
 import java.io.IOException;
-import java.net.URI;
 import java.nio.file.DirectoryStream;
-import java.nio.file.FileSystemAlreadyExistsException;
-import java.nio.file.FileSystems;
 import java.nio.file.FileVisitResult;
 import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Enumeration;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.zip.ZipEntry;
 
-import org.eclipse.jdt.internal.compiler.batch.FileSystem.ClasspathAnswer;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFileReader;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFormatException;
 import org.eclipse.jdt.internal.compiler.classfmt.ExternalAnnotationDecorator;
 import org.eclipse.jdt.internal.compiler.env.AccessRuleSet;
 import org.eclipse.jdt.internal.compiler.env.IBinaryType;
+import org.eclipse.jdt.internal.compiler.env.NameEnvironmentAnswer;
 import org.eclipse.jdt.internal.compiler.lookup.BinaryTypeBinding.ExternalAnnotationStatus;
+import org.eclipse.jdt.internal.compiler.util.JRTUtil;
 import org.eclipse.jdt.internal.compiler.util.SuffixConstants;
 import org.eclipse.jdt.internal.compiler.util.Util;
 
@@ -39,16 +36,8 @@ public class ClasspathMultiReleaseJar extends ClasspathJar {
 	@Override
 	public void initialize() throws IOException {
 		super.initialize();
-		URI t = this.file.toURI();
 		if (this.file.exists()) {
-			URI uri = URI.create("jar:file:" + t.getRawPath()); //$NON-NLS-1$
-
-			try {
-				HashMap<String, ?> env = new HashMap<>();
-				this.fs = FileSystems.newFileSystem(uri, env);
-			} catch (FileSystemAlreadyExistsException e) {
-				this.fs = FileSystems.getFileSystem(uri);
-			}
+			this.fs = JRTUtil.getJarFileSystem(this.file.toPath());
 			this.releasePath = this.fs.getPath("/", "META-INF", "versions", this.compliance); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
 			if (!Files.exists(this.releasePath)) {
 				this.releasePath = null;
@@ -111,7 +100,7 @@ public class ClasspathMultiReleaseJar extends ClasspathJar {
 		return singletonModuleNameIf(this.packageCache.contains(qualifiedPackageName));
 	}
 	@Override
-	public ClasspathAnswer findClass(char[] binaryFileName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName, boolean asBinaryOnly) {
+	public NameEnvironmentAnswer findClass(char[] binaryFileName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName, boolean asBinaryOnly) {
 		if (!isPackage(qualifiedPackageName, moduleName)) return null; // most common case
 		if (this.releasePath != null) {
 			try {
@@ -119,7 +108,7 @@ public class ClasspathMultiReleaseJar extends ClasspathJar {
 				byte[] content = Files.readAllBytes(p);
 				IBinaryType reader = null;
 				if (content != null) {
-					reader = new ClassFileReader(content, qualifiedBinaryFileName.toCharArray());
+					reader = new ClassFileReader(p.toUri(), content, qualifiedBinaryFileName.toCharArray());
 				}
 				if (reader != null) {
 					char[] modName = this.module == null ? null : this.module.name();
@@ -152,11 +141,10 @@ public class ClasspathMultiReleaseJar extends ClasspathJar {
 							reader = new ExternalAnnotationDecorator(reader, null);
 						}
 					if (this.accessRuleSet == null)
-						return new ClasspathAnswer(reader, null, modName, this);
-					return new ClasspathAnswer(reader,
+						return new NameEnvironmentAnswer(reader, null, modName);
+					return new NameEnvironmentAnswer(reader,
 							this.accessRuleSet.getViolatedRestriction(fileNameWithoutExtension.toCharArray()),
-							modName,
-							this);
+							modName);
 				}
 			} catch (IOException | ClassFormatException e) {
 				// treat as if class file is missing

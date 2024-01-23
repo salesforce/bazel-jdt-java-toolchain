@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2021 IBM Corporation and others.
+ * Copyright (c) 2000, 2023 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -123,6 +123,9 @@ public final class Messages {
 	public static String records;
 	public static String sealed_types;
 	public static String pattern_matching_switch;
+	public static String record_patterns;
+	public static String unnammed_patterns_and_vars;
+	public static String unnamed_classes_and_instance_main_methods;
 
 	static {
 		initializeMessages(BUNDLE_NAME, Messages.class);

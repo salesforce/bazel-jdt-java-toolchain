@@ -14,16 +14,16 @@
 package org.eclipse.jdt.internal.compiler.batch;
 
 import java.io.File;
-import java.io.IOException;
 import java.io.InputStream;
+import java.io.IOException;
 import java.util.zip.ZipEntry;
 
-import org.eclipse.jdt.internal.compiler.batch.FileSystem.ClasspathAnswer;
 import org.eclipse.jdt.internal.compiler.env.AccessRuleSet;
+import org.eclipse.jdt.internal.compiler.env.NameEnvironmentAnswer;
 import org.eclipse.jdt.internal.compiler.util.Util;
 
 public class ClasspathSourceJar extends ClasspathJar {
-	private String encoding;
+	private final String encoding;
 
 	public ClasspathSourceJar(File file, boolean closeZipFileAtEnd,
 			AccessRuleSet accessRuleSet, String encoding,
@@ -33,7 +33,7 @@ public class ClasspathSourceJar extends ClasspathJar {
 	}
 
 	@Override
-	public ClasspathAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName, boolean asBinaryOnly) {
+	public NameEnvironmentAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName, boolean asBinaryOnly) {
 		if (!isPackage(qualifiedPackageName, moduleName))
 			return null; // most common case
 
@@ -55,10 +55,9 @@ public class ClasspathSourceJar extends ClasspathJar {
 					this.encoding,
 					this.destinationPath);
 				compilationUnit.module = this.module == null ? null : this.module.name();
-				return new ClasspathAnswer(
+				return new NameEnvironmentAnswer(
 					compilationUnit,
-					fetchAccessRestriction(qualifiedBinaryFileName),
-					this);
+					fetchAccessRestriction(qualifiedBinaryFileName));
 			} catch (IOException e) {
 				// treat as if source file is missing
 			}

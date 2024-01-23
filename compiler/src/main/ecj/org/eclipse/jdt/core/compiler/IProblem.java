@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2022 IBM Corporation and others.
+ * Copyright (c) 2000, 2023 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -811,7 +811,7 @@ void setSourceStart(int sourceStart);
 	int PackageCollidesWithType = TypeRelated + 321;
 	int TypeCollidesWithPackage = TypeRelated + 322;
 	int DuplicateTypes = TypeRelated + 323;
-	int IsClassPathCorrect = TypeRelated + 324;
+	int IsClassPathCorrect = TypeRelated + 324; // see also IsClasspathCorrectWithReferencingType below
 	int PublicClassMustMatchFileName = TypeRelated + 325;
 	/** @deprecated - problem is no longer generated */
 	int MustSpecifyPackage = Internal + 326;
@@ -858,6 +858,8 @@ void setSourceStart(int sourceStart);
 	int IllegalVisibilityModifierCombinationForField = FieldRelated + 344;
 	int IllegalModifierCombinationFinalVolatileForField = FieldRelated + 345;
 	int UnexpectedStaticModifierForField = FieldRelated + 346;
+	/** @since 3.32 */
+	int IsClassPathCorrectWithReferencingType = TypeRelated + 347;
 
 	/** @deprecated - problem is no longer generated, use {@link #UndefinedType} instead */
 	int FieldTypeNotFound =  FieldRelated + 349 + ProblemReasons.NotFound; // FieldRelated + 350
@@ -1227,6 +1229,18 @@ void setSourceStart(int sourceStart);
 	int JavadocInvalidModuleQualification = Javadoc + Internal + 1810;
 	/** @since 3.29*/
 	int JavadocInvalidModule = Javadoc + Internal + 1811;
+	/** @since 3.30*/
+	int JavadocInvalidSnippet = Javadoc + Internal + 1812;
+	/** @since 3.30 */
+	int JavadocInvalidSnippetMissingColon = Javadoc + Internal + 1813;
+	/** @since 3.30 */
+	int JavadocInvalidSnippetContentNewLine = Javadoc + Internal + 1814;
+	/** @since 3.30 */
+	int JavadocInvalidSnippetRegionNotClosed = Javadoc + Internal + 1815;
+	/** @since 3.30 */
+	int JavadocInvalidSnippetRegexSubstringTogether = Javadoc + Internal + 1816;
+	/** @since 3.30 */
+	int JavadocInvalidSnippetDuplicateRegions = Javadoc + Internal + 1817;
 
 	/**
 	 * Generics
@@ -1497,11 +1511,7 @@ void setSourceStart(int sourceStart);
     int ConstructorReferenceNotBelow18 = Internal + Syntax + 647;
     /** @since 3.10 */
     int ExplicitThisParameterNotInLambda = Internal + Syntax + 648;
-    /**
-     * @since 3.10
-     * @deprecated Per https://bugs.openjdk.java.net/browse/JDK-8231435 this problem is no longer raised
-     */
-    @Deprecated
+    /** @since 3.10 */
     int ExplicitAnnotationTargetRequired = TypeRelated + 649;
     /** @since 3.10 */
     int IllegalTypeForExplicitThis = Internal + Syntax + 650;
@@ -1867,7 +1877,7 @@ void setSourceStart(int sourceStart);
 	/** @since 3.10 */
 	int NullityMismatchingTypeAnnotationSuperHint = Internal + 954;
 	/** @since 3.10 */
-	int NullityUncheckedTypeAnnotationDetail = Internal + 955;
+	int NullityUncheckedTypeAnnotationDetail = Internal + 955; // see also NullityUncheckedTypeAnnotation
 	/** @since 3.10 */
 	int NullityUncheckedTypeAnnotationDetailSuperHint = Internal + 956;
 	/** @since 3.10 */
@@ -1926,6 +1936,19 @@ void setSourceStart(int sourceStart);
 	int AnnotatedTypeArgumentToUnannotated = Internal + 983;
 	/** @since 3.21 */
 	int AnnotatedTypeArgumentToUnannotatedSuperHint = Internal + 984;
+	/** @since 3.32 */
+	int NonNullArrayContentNotInitialized = Internal + 985;
+	/**
+	 * Both {@link #NullityUncheckedTypeAnnotationDetail} and {@link #NullityUncheckedTypeAnnotation}
+	 * signal that unchecked conversion is needed to pass a value between annotated and un-annotated code.
+	 * In the case of {@link #NullityUncheckedTypeAnnotationDetail} the mismatch was observed only on some
+	 * detail of the types involved (type arguments or array components), for which the UI does not (yet)
+	 * offer a quick fix, whereas {@link #NullityUncheckedTypeAnnotation} affects the toplevel type and thus
+	 * can be easily fixed by adding the appropriate null annotation.
+	 *
+	 * @since 3.36
+	 */
+	int NullityUncheckedTypeAnnotation = Internal + 986;
 
 
 	// Java 8 work
@@ -2168,6 +2191,9 @@ void setSourceStart(int sourceStart);
 	int VarIsNotAllowedHere = Syntax + 1511; // ''var'' is not allowed here
 	/** @since 3.16 */
 	int VarCannotBeMixedWithNonVarParams = Syntax + 1512; // ''var'' cannot be mixed with explicit or implicit parameters
+	/** @since 3.35 */
+	int VarCannotBeUsedWithTypeArguments = Syntax + 1513; // ''var'' cannot be used with type arguments (e.g. as in ''var<Integer> x = List.of(42)'')
+
 	/** @since 3.18
 	 * @deprecated preview related error - will be removed
 	 * @noreference preview related error */
@@ -2397,6 +2423,7 @@ void setSourceStart(int sourceStart);
 	 */
 	int PatternVariableRedefined = Internal + 1781;
 	/** @since 3.26
+	 * @deprecated
 	 */
 	int PatternSubtypeOfExpression = Internal + 1782;
 	/** @since 3.26
@@ -2464,15 +2491,6 @@ void setSourceStart(int sourceStart);
 
 	/** @since 3.28
 	 * @noreference preview feature error */
-	int OnlyOnePatternCaseLabelAllowed = PreviewRelated + 1903;
-	/** @since 3.28
-	 * @noreference preview feature error */
-	int CannotMixPatternAndDefault = PreviewRelated + 1904;
-	/** @since 3.28
-	 * @noreference preview feature error */
-	int CannotMixNullAndNonTypePattern = PreviewRelated + 1905;
-	/** @since 3.28
-	 * @noreference preview feature error */
 	int PatternDominated = PreviewRelated + 1906;
 	/** @since 3.28
 	 * @noreference preview feature error */
@@ -2484,10 +2502,66 @@ void setSourceStart(int sourceStart);
 	 * @noreference preview feature error */
 	int DuplicateTotalPattern = PreviewRelated + 1909;
 
+	 /** @since 3.34
+	 * @noreference preview feature error */
+	int PatternSwitchNullOnlyOrFirstWithDefault = PreviewRelated + 1920;
+
+	 /** @since 3.34
+	 * @noreference preview feature error */
+	int PatternSwitchCaseDefaultOnlyAsSecond = PreviewRelated + 1921;
+
+	/**
+	 * @since 3.34
+	 * @noreference preview feature error
+	 */
+	int IllegalFallthroughFromAPattern = PreviewRelated + 1922;
+
 	/** @since 3.28
 	 * @noreference preview feature error */
 	int UnnecessaryNullCaseInSwitchOverNonNull = PreviewRelated + 1910;
 	/** @since 3.28
 	 * @noreference preview feature error */
 	int UnexpectedTypeinSwitchPattern = PreviewRelated + 1911;
+	/**
+	 * @since 3.32
+	 * @noreference preview feature
+	 */
+	int UnexpectedTypeinRecordPattern =  PreviewRelated + 1912;
+	/**
+	 * @since 3.32
+	 * @noreference preview feature
+	 */
+	int RecordPatternMismatch =  PreviewRelated + 1913;
+	/**
+	 * @since 3.32
+	 * @noreference preview feature
+	 */
+	int PatternTypeMismatch =  PreviewRelated + 1914;
+	/**
+	 * @since 3.32
+	 * @noreference preview feature
+	 * @deprecated
+	 */
+	int RawTypeInRecordPattern =  PreviewRelated + 1915;
+	/**
+	 * @since 3.36
+	 * @noreference preview feature
+	 */
+	int FalseConstantInGuard =  PreviewRelated + 1916;
+	/**
+	 * @since 3.34
+	 * @noreference preview feature
+	 */
+	int CannotInferRecordPatternTypes = PreviewRelated + 1940;
+
+	/**
+	 * @since 3.36
+	 */
+	int IllegalRecordPattern = TypeRelated + 1941;
+
+
+	/**
+	 * @since 3.35
+	 */
+	int SyntheticAccessorNotEnclosingMethod = MethodRelated + 1990;
 }

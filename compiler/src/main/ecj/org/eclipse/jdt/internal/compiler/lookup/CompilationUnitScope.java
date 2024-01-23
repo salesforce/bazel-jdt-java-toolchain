@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2020 IBM Corporation and others.
+ * Copyright (c) 2000, 2023 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -20,11 +20,13 @@
 package org.eclipse.jdt.internal.compiler.lookup;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 
 import org.eclipse.jdt.core.compiler.CharOperation;
 import org.eclipse.jdt.internal.compiler.ast.*;
@@ -65,10 +67,11 @@ public class CompilationUnitScope extends Scope {
 	 */
 	private boolean skipCachingImports;
 
-	boolean connectingHierarchy;
 	private ArrayList<Invocation> inferredInvocations;
 	/** Cache of interned inference variables. Access only via {@link InferenceVariable#get(TypeBinding, int, InvocationSite, Scope, ReferenceBinding, boolean)}. */
 	Map<InferenceVariable.InferenceVarKey, InferenceVariable> uniqueInferenceVariables = new HashMap<>();
+
+	private RuntimeException deferredException; // enables deferring a CompletionNodeFound exception, not used during normal compilation
 
 public CompilationUnitScope(CompilationUnitDeclaration unit, LookupEnvironment environment) {
 	this(unit, environment.globalOptions);
@@ -227,7 +230,7 @@ void checkAndSetImports() {
 	}
 
 	// allocate the import array, add java.lang.* by default
-	int numberOfStatements = this.referenceContext.imports.length;
+	final int numberOfStatements = this.referenceContext.imports.length;
 	int numberOfImports = numberOfStatements + 1;
 	for (int i = 0; i < numberOfStatements; i++) {
 		ImportReference importReference = this.referenceContext.imports[i];
@@ -240,36 +243,62 @@ void checkAndSetImports() {
 	resolvedImports[0] = getDefaultImports()[0];
 	int index = 1;
 
+	Predicate<ImportReference> isStaticImport = i -> i.isStatic();
+	Predicate<ImportReference> isNotStaticImport = Predicate.not(isStaticImport);
+
+	// GitHub 269: resolve non-static imports first, so that cyclic static imports can be resolved correctly
+	index = resolveImports(numberOfStatements, resolvedImports, index, isNotStaticImport);
+
+	// non-static imports are resolved now, "store" them before continuing with static imports
+	ImportBinding[] temp = new ImportBinding[index];
+	System.arraycopy(resolvedImports, 0, temp, 0, index);
+	this.imports = temp;
+
+	// GitHub 269: non-static imports are resolved, now we can resolve static imports
+	index = resolveImports(numberOfStatements, resolvedImports, index, isStaticImport);
+
+	// shrink resolvedImports... only happens if an error was reported
+	if (resolvedImports.length > index) {
+		System.arraycopy(resolvedImports, 0, resolvedImports = new ImportBinding[index], 0, index);
+	}
+	this.imports = resolvedImports;
+}
+
+private int resolveImports(int numberOfStatements, ImportBinding[] resolvedImports, int index, Predicate<ImportReference> filter) {
 	nextImport : for (int i = 0; i < numberOfStatements; i++) {
 		ImportReference importReference = this.referenceContext.imports[i];
+		if (!filter.test(importReference)) {
+			continue;
+		}
+
 		char[][] compoundName = importReference.tokens;
 
 		// skip duplicates or imports of the current package
 		for (int j = 0; j < index; j++) {
 			ImportBinding resolved = resolvedImports[j];
-			if (resolved.onDemand == ((importReference.bits & ASTNode.OnDemand) != 0) && resolved.isStatic() == importReference.isStatic())
-				if (CharOperation.equals(compoundName, resolvedImports[j].compoundName))
+			if (resolved.onDemand == ((importReference.bits & ASTNode.OnDemand) != 0) && resolved.isStatic() == importReference.isStatic()) {
+				if (CharOperation.equals(compoundName, resolvedImports[j].compoundName)) {
 					continue nextImport;
+				}
+			}
 		}
 
 		if ((importReference.bits & ASTNode.OnDemand) != 0) {
-			if (CharOperation.equals(compoundName, this.currentPackageName))
-				continue nextImport;
+			if (CharOperation.equals(compoundName, this.currentPackageName)) {
+				continue;
+			}
 
 			Binding importBinding = findImport(compoundName, compoundName.length);
-			if (!importBinding.isValidBinding() || (importReference.isStatic() && importBinding instanceof PackageBinding))
-				continue nextImport;	// we report all problems in faultInImports()
+			if (!importBinding.isValidBinding() || (importReference.isStatic() && importBinding instanceof PackageBinding)) {
+				continue;	// we report all problems in faultInImports()
+			}
 			resolvedImports[index++] = new ImportBinding(compoundName, true, importBinding, importReference);
 		} else {
 			// resolve single imports only when the last name matches
 			resolvedImports[index++] = new ImportBinding(compoundName, false, null, importReference);
 		}
 	}
-
-	// shrink resolvedImports... only happens if an error was reported
-	if (resolvedImports.length > index)
-		System.arraycopy(resolvedImports, 0, resolvedImports = new ImportBinding[index], 0, index);
-	this.imports = resolvedImports;
+	return index;
 }
 
 /**
@@ -365,10 +394,22 @@ public char[] computeConstantPoolName(LocalTypeBinding localType) {
 void connectTypeHierarchy() {
 	for (int i = 0, length = this.topLevelTypes.length; i < length; i++)
 		this.topLevelTypes[i].scope.connectTypeHierarchy();
-	// Wait for all hierarchy information to be built before
-	// checking on permitted types
+}
+void integrateAnnotationsInHierarchy() {
+	// Only now that all hierarchy information is built we're ready for ...
+	// ... integrating annotations
+	for (int i = 0, length = this.topLevelTypes.length; i < length; i++)
+		this.topLevelTypes[i].scope.referenceType().updateSupertypesWithAnnotations(Collections.emptyMap());
+	// ... checking on permitted types
+	connectPermittedTypes();
 	for (int i = 0, length = this.topLevelTypes.length; i < length; i++)
 		this.topLevelTypes[i].scope.connectImplicitPermittedTypes();
+}
+private void connectPermittedTypes() {
+	for (int i = 0, length = this.topLevelTypes.length; i < length; i++) {
+		SourceTypeBinding sourceType = this.topLevelTypes[i];
+		sourceType.scope.connectPermittedTypes();
+	}
 }
 void faultInImports() {
 	if (this.tempImports != null)
@@ -691,7 +732,7 @@ ImportBinding[] getDefaultImports() {
 		problemReporter().isClassPathCorrect(
 				TypeConstants.JAVA_LANG_OBJECT,
 			this.referenceContext,
-			this.environment.missingClassFileLocation, false);
+			this.environment.missingClassFileLocation, false, null/*resolving j.l.O is not specific to any referencing type*/);
 		BinaryTypeBinding missingObject = this.environment.createMissingType(null, TypeConstants.JAVA_LANG_OBJECT);
 		importBinding = missingObject.fPackage;
 	}
@@ -946,10 +987,6 @@ private void recordImportBinding(ImportBinding bindingToAdd) {
  * Checks additional bindings (methods or types) imported from a single static import.
  * Method is tried first, followed by type. If found, records them.
  * If in the process, import is flagged as duplicate, -1 is returned.
- * @param compoundName
- * @param typesBySimpleNames
- * @param mask
- * @param importReference
  */
 private void checkMoreStaticBindings(
 		char[][] compoundName,
@@ -979,10 +1016,6 @@ private void checkMoreStaticBindings(
 /**
  * Checks for duplicates. If all ok, records the importBinding
  * returns -1 when this import is flagged as duplicate.
- * @param importBinding
- * @param typesBySimpleNames
- * @param importReference
- * @param compoundName
  * @return -1 when this import is flagged as duplicate, importPtr otherwise.
  */
 private int checkAndRecordImportBinding(
@@ -1116,5 +1149,15 @@ public void cleanUpInferenceContexts() {
 	for (Invocation invocation : this.inferredInvocations)
 		invocation.cleanUpInferenceContexts();
 	this.inferredInvocations = null;
+}
+public void deferException(RuntimeException exception) {
+	this.deferredException = exception;
+}
+public void throwDeferredException() {
+	if (this.deferredException != null) {
+		RuntimeException throwMe = this.deferredException;
+		this.deferredException = null;
+		throw throwMe;
+	}
 }
 }

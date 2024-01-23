@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2021 BEA Systems, Inc.
+ * Copyright (c) 2007, 2023 BEA Systems, Inc.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -25,6 +25,7 @@ import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
+import javax.tools.JavaFileManager;
 
 import org.eclipse.jdt.internal.compiler.Compiler;
 import org.eclipse.jdt.internal.compiler.apt.model.ElementsImpl;
@@ -32,6 +33,7 @@ import org.eclipse.jdt.internal.compiler.apt.model.Factory;
 import org.eclipse.jdt.internal.compiler.apt.model.TypesImpl;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFileConstants;
 import org.eclipse.jdt.internal.compiler.env.ICompilationUnit;
+import org.eclipse.jdt.internal.compiler.impl.CompilerOptions;
 import org.eclipse.jdt.internal.compiler.lookup.LookupEnvironment;
 import org.eclipse.jdt.internal.compiler.lookup.ModuleBinding;
 import org.eclipse.jdt.internal.compiler.lookup.ReferenceBinding;
@@ -40,6 +42,12 @@ import org.eclipse.jdt.internal.compiler.lookup.ReferenceBinding;
  * Implementation of ProcessingEnvironment that is common to batch and IDE environments.
  */
 public abstract class BaseProcessingEnvImpl implements ProcessingEnvironment {
+
+	/**
+	 * The minimal required Java runtime version (we need to run compiler on)
+	 */
+	public static final SourceVersion MINIMAL_REQUIRED_RUNTIME_VERSION = SourceVersion.RELEASE_17;
+	private static final long VERSION_FOR_MINIMAL_RUNTIME = ClassFileConstants.JDK17;
 
 	// Initialized in subclasses:
 	protected Filer _filer;
@@ -50,124 +58,121 @@ public abstract class BaseProcessingEnvImpl implements ProcessingEnvironment {
 	// Initialized in this base class:
 	protected Elements _elementUtils;
 	protected Types _typeUtils;
-	private List<ICompilationUnit> _addedUnits;
-	private List<ReferenceBinding> _addedClassFiles;
-	private List<ICompilationUnit> _deletedUnits;
+	private final List<ICompilationUnit> _addedUnits;
+	private final List<ReferenceBinding> _addedClassFiles;
+	private final List<ICompilationUnit> _deletedUnits;
 	private boolean _errorRaised;
-	private Factory _factory;
+	private final Factory _factory;
 	public ModuleBinding _current_module;
 
 	public BaseProcessingEnvImpl() {
-		_addedUnits = new ArrayList<>();
-		_addedClassFiles = new ArrayList<>();
-		_deletedUnits = new ArrayList<>();
-		_elementUtils = ElementsImpl.create(this);
-		_typeUtils = new TypesImpl(this);
-		_factory = new Factory(this);
-		_errorRaised = false;
+		this._addedUnits = new ArrayList<>();
+		this._addedClassFiles = new ArrayList<>();
+		this._deletedUnits = new ArrayList<>();
+		this._elementUtils = ElementsImpl.create(this);
+		this._typeUtils = new TypesImpl(this);
+		this._factory = new Factory(this);
+		this._errorRaised = false;
 	}
 
 	public void addNewUnit(ICompilationUnit unit) {
-		_addedUnits.add(unit);
+		this._addedUnits.add(unit);
 	}
 
 	public void addNewClassFile(ReferenceBinding binding) {
-		_addedClassFiles.add(binding);
+		this._addedClassFiles.add(binding);
 	}
 
 	public Compiler getCompiler() {
-		return _compiler;
+		return this._compiler;
 	}
 
 	public ICompilationUnit[] getDeletedUnits() {
-		ICompilationUnit[] result = new ICompilationUnit[_deletedUnits.size()];
-		_deletedUnits.toArray(result);
+		ICompilationUnit[] result = new ICompilationUnit[this._deletedUnits.size()];
+		this._deletedUnits.toArray(result);
 		return result;
 	}
 
 	public ICompilationUnit[] getNewUnits() {
-		ICompilationUnit[] result = new ICompilationUnit[_addedUnits.size()];
-		_addedUnits.toArray(result);
+		ICompilationUnit[] result = new ICompilationUnit[this._addedUnits.size()];
+		this._addedUnits.toArray(result);
 		return result;
 	}
 
 	@Override
 	public Elements getElementUtils() {
-		return _elementUtils;
+		return this._elementUtils;
 	}
 
 	@Override
 	public Filer getFiler() {
-		return _filer;
+		return this._filer;
 	}
 
 	@Override
 	public Messager getMessager() {
-		return _messager;
+		return this._messager;
 	}
 
 	@Override
 	public Map<String, String> getOptions() {
-		return _processorOptions;
+		return this._processorOptions;
 	}
 
 	@Override
 	public Types getTypeUtils() {
-		return _typeUtils;
+		return this._typeUtils;
 	}
 
 	public LookupEnvironment getLookupEnvironment() {
-		return _compiler.lookupEnvironment;
+		return this._compiler.lookupEnvironment;
 	}
 
 	@Override
 	public SourceVersion getSourceVersion() {
-		if (this._compiler.options.sourceLevel <= ClassFileConstants.JDK1_5) {
+		final long sourceLevel = this._compiler.options.sourceLevel;
+		if (sourceLevel <= ClassFileConstants.JDK1_5) {
 			return SourceVersion.RELEASE_5;
 		}
-		if (this._compiler.options.sourceLevel == ClassFileConstants.JDK1_6) {
+		if (sourceLevel == ClassFileConstants.JDK1_6) {
 			return SourceVersion.RELEASE_6;
+		} else if (sourceLevel == ClassFileConstants.JDK1_7) {
+			return SourceVersion.RELEASE_7;
+		} else if (sourceLevel == ClassFileConstants.JDK1_8) {
+			return SourceVersion.RELEASE_8;
+		} else if (sourceLevel == ClassFileConstants.JDK9) {
+			return SourceVersion.RELEASE_9;
+		} else if (sourceLevel == ClassFileConstants.JDK10) {
+			return SourceVersion.RELEASE_10;
+		} else if (sourceLevel == ClassFileConstants.JDK11) {
+			return SourceVersion.RELEASE_11;
+		} else if (sourceLevel == ClassFileConstants.JDK12) {
+			return SourceVersion.RELEASE_12;
+		} else if (sourceLevel == ClassFileConstants.JDK13) {
+			return SourceVersion.RELEASE_13;
+		} else if (sourceLevel == ClassFileConstants.JDK14) {
+			return SourceVersion.RELEASE_14;
+		} else if (sourceLevel == ClassFileConstants.JDK15) {
+			return SourceVersion.RELEASE_15;
+		} else if (sourceLevel == ClassFileConstants.JDK16) {
+			return SourceVersion.RELEASE_16;
+		} else if (sourceLevel == ClassFileConstants.JDK17) {
+			return SourceVersion.RELEASE_17;
 		}
-		try {
-			if (this._compiler.options.sourceLevel == ClassFileConstants.JDK1_7) {
-				return SourceVersion.valueOf("RELEASE_7"); //$NON-NLS-1$
+		// From here on we can't use constants that may not be yet defined in
+		// minimal required runtime Java version we have to avoid
+		// errors like java.lang.NoSuchFieldError: RELEASE_20
+		if (sourceLevel > VERSION_FOR_MINIMAL_RUNTIME) {
+			try {
+				return SourceVersion.valueOf("RELEASE_" + CompilerOptions.versionFromJdkLevel(sourceLevel)); //$NON-NLS-1$
+			} catch (IllegalArgumentException e) {
+				// handle call on a minimal release we can run on
+				return MINIMAL_REQUIRED_RUNTIME_VERSION;
 			}
-			if (this._compiler.options.sourceLevel == ClassFileConstants.JDK1_8) {
-				return SourceVersion.valueOf("RELEASE_8"); //$NON-NLS-1$
-			}
-			if (this._compiler.options.sourceLevel == ClassFileConstants.JDK9) {
-				return SourceVersion.valueOf("RELEASE_9"); //$NON-NLS-1$
-			}
-			if (this._compiler.options.sourceLevel == ClassFileConstants.JDK10) {
-				return SourceVersion.valueOf("RELEASE_10"); //$NON-NLS-1$
-			}
-			if (this._compiler.options.sourceLevel == ClassFileConstants.JDK11) {
-				return SourceVersion.valueOf("RELEASE_11"); //$NON-NLS-1$
-			}
-			if (this._compiler.options.sourceLevel == ClassFileConstants.JDK12) {
-				return SourceVersion.valueOf("RELEASE_12"); //$NON-NLS-1$
-			}
-			if (this._compiler.options.sourceLevel == ClassFileConstants.JDK13) {
-				return SourceVersion.valueOf("RELEASE_13"); //$NON-NLS-1$
-			}
-			if (this._compiler.options.sourceLevel == ClassFileConstants.JDK14) {
-				return SourceVersion.valueOf("RELEASE_14"); //$NON-NLS-1$
-			}
-			if (this._compiler.options.sourceLevel == ClassFileConstants.JDK15) {
-				return SourceVersion.valueOf("RELEASE_15"); //$NON-NLS-1$
-			}
-			if (this._compiler.options.sourceLevel == ClassFileConstants.JDK16) {
-				return SourceVersion.valueOf("RELEASE_16"); //$NON-NLS-1$
-			}
-			if (this._compiler.options.sourceLevel == ClassFileConstants.JDK17) {
-				return SourceVersion.valueOf("RELEASE_17"); //$NON-NLS-1$
-			}
-		} catch(IllegalArgumentException e) {
-			// handle call on a JDK 6
-			return SourceVersion.RELEASE_6;
+		} else {
+			// to make compiler happy, should never happen
+			throw new IllegalStateException("Invalid JDK source level: " + sourceLevel); //$NON-NLS-1$
 		}
-		// handle call on a JDK 6 by default
-		return SourceVersion.RELEASE_6;
 	}
 
 	/**
@@ -175,18 +180,18 @@ public abstract class BaseProcessingEnvImpl implements ProcessingEnvironment {
 	 * newly generated compilation units (ie, once per round)
 	 */
 	public void reset() {
-		_addedUnits.clear();
-		_addedClassFiles.clear();
-		_deletedUnits.clear();
+		this._addedUnits.clear();
+		this._addedClassFiles.clear();
+		this._deletedUnits.clear();
 	}
 
 	/**
 	 * Has an error been raised in any of the rounds of processing in this build?
-	 * @return
+	 * @return error flag
 	 */
 	public boolean errorRaised()
 	{
-		return _errorRaised;
+		return this._errorRaised;
 	}
 
 	/**
@@ -195,25 +200,26 @@ public abstract class BaseProcessingEnvImpl implements ProcessingEnvironment {
 	 */
 	public void setErrorRaised(boolean b)
 	{
-		_errorRaised = true;
+		this._errorRaised = true;
 	}
 
 	public Factory getFactory()
 	{
-		return _factory;
+		return this._factory;
 	}
 
 	public ReferenceBinding[] getNewClassFiles() {
-		ReferenceBinding[] result = new ReferenceBinding[_addedClassFiles.size()];
-		_addedClassFiles.toArray(result);
+		ReferenceBinding[] result = new ReferenceBinding[this._addedClassFiles.size()];
+		this._addedClassFiles.toArray(result);
 		return result;
 	}
-	/*
-	 * This overrides ProcessingEnvironment, but can't declare so since
-	 * we are still compiling against JDK 8.
-	 */
+	@Override
     public boolean isPreviewEnabled() {
         return this._compiler.options.enablePreviewFeatures;
     }
+
+	public JavaFileManager getFileManager() {
+		return null;
+	}
 
 }

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2019 IBM Corporation and others.
+ * Copyright (c) 2000, 2022 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -195,6 +195,9 @@ public class ParameterizedGenericMethodBinding extends ParameterizedMethodBindin
 					break;
 			}
 		}
+		if (invocationSite instanceof Invocation) {
+			InferenceContext18.updateInnerDiamonds(methodSubstitute, ((Invocation) invocationSite).arguments());
+		}
 		// check presence of unchecked argument conversion a posteriori (15.12.2.6)
 		return methodSubstitute;
 	}
@@ -243,17 +246,31 @@ public class ParameterizedGenericMethodBinding extends ParameterizedMethodBindin
 			final boolean isPolyExpression = invocationSite instanceof Expression &&   ((Expression) invocationSite).isTrulyExpression() &&
 					((Expression)invocationSite).isPolyExpression(originalMethod);
 			boolean isDiamond = isPolyExpression && originalMethod.isConstructor();
+			boolean isInexactVarargsInference = false;
 			if (arguments.length == parameters.length) {
 				infCtx18.inferenceKind = requireBoxing ? InferenceContext18.CHECK_LOOSE : InferenceContext18.CHECK_STRICT; // engine may still slip into loose mode and adjust level.
 				infCtx18.inferInvocationApplicability(originalMethod, arguments, isDiamond);
+				if (InferenceContext18.DEBUG) {
+					System.out.println("Infer applicability for "+invocationSite+":\n"+infCtx18); //$NON-NLS-1$ //$NON-NLS-2$
+				}
 				result = infCtx18.solve(true);
+				if (InferenceContext18.DEBUG) {
+					System.out.println("Result=\n"+result); //$NON-NLS-1$
+				}
+				isInexactVarargsInference = (result != null && originalMethod.isVarargs() && !allArgumentsAreProper);
 			}
 			if (result == null && originalMethod.isVarargs()) {
 				// check for variable-arity applicability
 				infCtx18 = invocationSite.freshInferenceContext(scope); // start over
 				infCtx18.inferenceKind = InferenceContext18.CHECK_VARARG;
 				infCtx18.inferInvocationApplicability(originalMethod, arguments, isDiamond);
+				if (InferenceContext18.DEBUG) {
+					System.out.println("Infer varargs applicability for "+invocationSite+":\n"+infCtx18); //$NON-NLS-1$ //$NON-NLS-2$
+				}
 				result = infCtx18.solve(true);
+				if (InferenceContext18.DEBUG) {
+					System.out.println("Result=\n"+result); //$NON-NLS-1$
+				}
 			}
 			if (result == null)
 				return null;
@@ -269,6 +286,11 @@ public class ParameterizedGenericMethodBinding extends ParameterizedMethodBindin
 				// ---- 18.5.2 (Invocation type): ----
 				provisionalResult = result;
 				result = infCtx18.inferInvocationType(expectedType, invocationSite, originalMethod);
+				if (InferenceContext18.DEBUG) {
+					System.out.println("Infer invocation type for "+invocationSite+ " with target " //$NON-NLS-1$ //$NON-NLS-2$
+							+(expectedType == null ? "<no type>" : expectedType.debugName())); //$NON-NLS-1$
+					System.out.println("Result=\n"+result); //$NON-NLS-1$
+				}
 				invocationTypeInferred = infCtx18.stepCompleted == InferenceContext18.TYPE_INFERRED_FINAL;
 				hasReturnProblem |= result == null;
 				if (hasReturnProblem)
@@ -279,12 +301,18 @@ public class ParameterizedGenericMethodBinding extends ParameterizedMethodBindin
 				TypeBinding[] solutions = infCtx18.getSolutions(typeVariables, invocationSite, result);
 				if (solutions != null) {
 					methodSubstitute = scope.environment().createParameterizedGenericMethod(originalMethod, solutions, infCtx18.usesUncheckedConversion, hasReturnProblem, expectedType);
+					if (InferenceContext18.DEBUG) {
+						System.out.println("Method substitute: "+methodSubstitute); //$NON-NLS-1$
+					}
 					if (invocationSite instanceof Invocation && allArgumentsAreProper && (expectedType == null || expectedType.isProperType(true)))
 						infCtx18.forwardResults(result, (Invocation) invocationSite, methodSubstitute, expectedType);
 					try {
 						if (hasReturnProblem) { // illegally working from the provisional result?
 							MethodBinding problemMethod = infCtx18.getReturnProblemMethodIfNeeded(expectedType, methodSubstitute);
 							if (problemMethod instanceof ProblemMethodBinding) {
+								if (InferenceContext18.DEBUG) {
+									System.out.println("Inference reports problem method "+problemMethod); //$NON-NLS-1$
+								}
 								return problemMethod;
 							}
 						}
@@ -293,13 +321,20 @@ public class ParameterizedGenericMethodBinding extends ParameterizedMethodBindin
 								NullAnnotationMatching.checkForContradictions(methodSubstitute, invocationSite, scope);
 							MethodBinding problemMethod = methodSubstitute.boundCheck18(scope, arguments, invocationSite);
 							if (problemMethod != null) {
+								if (InferenceContext18.DEBUG) {
+									System.out.println("Bound check after inference failed: "+problemMethod); //$NON-NLS-1$
+								}
 								return problemMethod;
 							}
 						} else {
 							methodSubstitute = new PolyParameterizedGenericMethodBinding(methodSubstitute);
+							if (InferenceContext18.DEBUG) {
+								System.out.println("PolyParameterizedGenericMethodBinding: "+methodSubstitute); //$NON-NLS-1$
+							}
 						}
 					} finally {
-						if (allArgumentsAreProper) {
+						infCtx18.setInexactVarargsInference(isInexactVarargsInference);
+						if (!infCtx18.hasPrematureOverloadResolution()) {
 							if (invocationSite instanceof Invocation)
 								((Invocation) invocationSite).registerInferenceContext(methodSubstitute, infCtx18); // keep context so we can finish later
 							else if (invocationSite instanceof ReferenceExpression)
@@ -560,10 +595,10 @@ public class ParameterizedGenericMethodBinding extends ParameterizedMethodBindin
 	    this.parameters = Scope.substitute(this, originalMethod.parameters);
 	    // error case where exception type variable would have been substituted by a non-reference type (207573)
 	    if (inferredWithUncheckConversion) { // JSL 18.5.2: "If unchecked conversion was necessary..."
-	    	this.returnType = getErasure18_5_2(originalMethod.returnType, environment, hasReturnProblem); // propagate simulation of Bug JDK_8026527
+	    	this.returnType = getErasure18_5_2(originalMethod.returnType, environment);
 	    	this.thrownExceptions = new ReferenceBinding[originalMethod.thrownExceptions.length];
 	    	for (int i = 0; i < originalMethod.thrownExceptions.length; i++) {
-	    		this.thrownExceptions[i] = (ReferenceBinding) getErasure18_5_2(originalMethod.thrownExceptions[i], environment, false); // no excuse for exceptions
+	    		this.thrownExceptions[i] = (ReferenceBinding) getErasure18_5_2(originalMethod.thrownExceptions[i], environment);
 			}
 	    } else {
 	    	this.returnType = Scope.substitute(this, originalMethod.returnType);
@@ -608,13 +643,12 @@ public class ParameterizedGenericMethodBinding extends ParameterizedMethodBindin
 	    }
 	}
 
-	TypeBinding getErasure18_5_2(TypeBinding type, LookupEnvironment env, boolean substitute) {
+	TypeBinding getErasure18_5_2(TypeBinding type, LookupEnvironment env) {
 		// opportunistic interpretation of (JLS 18.5.2):
 		// "If unchecked conversion was necessary ..., then ...
 		// the return type and thrown types of the invocation type of m are given by
 		// the erasure of the return type and thrown types of m's type."
-		if (substitute)
-			type = Scope.substitute(this, type);
+		type = Scope.substitute(this, type); // compliant with Bug JDK-8135087: Erasure for unchecked invocation happens after inference
 		return env.convertToRawType(type.erasure(), true);
 	}
 
@@ -780,9 +814,7 @@ public class ParameterizedGenericMethodBinding extends ParameterizedMethodBindin
 		final private Scope scope;
 
 		/**
-		 * @param variables
 		 * @param substitutes when null, substitute type variable by unbounded wildcard
-		 * @param scope
 		 */
 		public LingeringTypeVariableEliminator(TypeVariableBinding [] variables, TypeBinding [] substitutes, Scope scope) {
 			this.variables = variables;

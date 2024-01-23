@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2021 IBM Corporation and others.
+ * Copyright (c) 2000, 2023 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -29,6 +29,7 @@
 package org.eclipse.jdt.internal.compiler.codegen;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -122,6 +123,10 @@ public class CodeStream {
 
 	public Stack<TypeBinding> switchSaveTypeBindings = new Stack<>();
 	public int lastSwitchCumulativeSyntheticVars = 0;
+
+	public Map<BlockScope, List<ExceptionLabel>> patternAccessorMap = new HashMap<>();
+	public Stack<BlockScope> patternCatchStack = new Stack<>();
+	public Map<BlockScope, LocalVariableBinding> scopeToCatchVar = new HashMap<>();
 
 public CodeStream(ClassFile givenClassFile) {
 	this.targetLevel = givenClassFile.targetJDK;
@@ -2606,7 +2611,21 @@ public void generateReturnBytecode(Expression expression) {
 		}
 	}
 }
-
+public void invokeDynamicForStringConcat(StringBuilder recipe, List<TypeBinding> arguments) {
+	int invokeDynamicNumber = this.classFile.recordBootstrapMethod(recipe.toString());
+	StringBuilder signature = new StringBuilder("("); //$NON-NLS-1$
+	for(int i = 0; i < arguments.size(); i++) {
+		signature.append(arguments.get(i).signature());
+	}
+	signature.append(")Ljava/lang/String;"); //$NON-NLS-1$
+	this.invokeDynamic(invokeDynamicNumber,
+			2,
+			1, // int
+			ConstantPool.ConcatWithConstants,
+			signature.toString().toCharArray(),
+			TypeIds.T_JavaLangObject,
+			getPopularBinding(ConstantPool.JavaLangStringConstantPoolName));
+}
 /**
  * The equivalent code performs a string conversion:
  *
@@ -2615,26 +2634,46 @@ public void generateReturnBytecode(Expression expression) {
  * @param oper2 the second expression
  */
 public void generateStringConcatenationAppend(BlockScope blockScope, Expression oper1, Expression oper2) {
-	int pc;
-	if (oper1 == null) {
-		/* Operand is already on the stack, and maybe nil:
-		note type1 is always to  java.lang.String here.*/
-		newStringContatenation();
-		dup_x1();
-		this.swap();
-		// If argument is reference type, need to transform it
-		// into a string (handles null case)
-		invokeStringValueOf(TypeIds.T_JavaLangObject);
-		invokeStringConcatenationStringConstructor();
+	if (this.targetLevel >= ClassFileConstants.JDK9 && blockScope.compilerOptions().useStringConcatFactory) {
+		this.countLabels = 0;
+		this.stackDepth++;
+		if (this.stackDepth > this.stackMax) {
+			this.stackMax = this.stackDepth;
+		}
+		StringBuilder recipe = new StringBuilder();
+		List<TypeBinding> arguments = new ArrayList<>();
+		if (oper1 == null) {
+			// Operand is already on the stack
+			invokeStringValueOf(TypeIds.T_JavaLangObject);
+			arguments.add(blockScope.getJavaLangString());
+			recipe.append(TypeConstants.STRING_CONCAT_MARKER_1);
+		} else {
+			oper1.buildStringForConcatation(blockScope, this, oper1.implicitConversion & TypeIds.COMPILE_TYPE_MASK, recipe, arguments);
+		}
+		oper2.buildStringForConcatation(blockScope, this, oper2.implicitConversion & TypeIds.COMPILE_TYPE_MASK, recipe, arguments);
+		invokeDynamicForStringConcat(recipe, arguments);
 	} else {
+		int pc;
+		if (oper1 == null) {
+			/* Operand is already on the stack, and maybe nil:
+			note type1 is always to  java.lang.String here.*/
+			newStringContatenation();
+			dup_x1();
+			this.swap();
+			// If argument is reference type, need to transform it
+			// into a string (handles null case)
+			invokeStringValueOf(TypeIds.T_JavaLangObject);
+			invokeStringConcatenationStringConstructor();
+		} else {
+			pc = this.position;
+			oper1.generateOptimizedStringConcatenationCreation(blockScope, this, oper1.implicitConversion & TypeIds.COMPILE_TYPE_MASK);
+			this.recordPositionsFrom(pc, oper1.sourceStart);
+		}
 		pc = this.position;
-		oper1.generateOptimizedStringConcatenationCreation(blockScope, this, oper1.implicitConversion & TypeIds.COMPILE_TYPE_MASK);
-		this.recordPositionsFrom(pc, oper1.sourceStart);
+		oper2.generateOptimizedStringConcatenation(blockScope, this, oper2.implicitConversion & TypeIds.COMPILE_TYPE_MASK);
+		this.recordPositionsFrom(pc, oper2.sourceStart);
+		invokeStringConcatenationToString();
 	}
-	pc = this.position;
-	oper2.generateOptimizedStringConcatenation(blockScope, this, oper2.implicitConversion & TypeIds.COMPILE_TYPE_MASK);
-	this.recordPositionsFrom(pc, oper2.sourceStart);
-	invokeStringConcatenationToString();
 }
 
 /**
@@ -2964,7 +3003,7 @@ public void generateSyntheticBodyForDeserializeLambda(SyntheticMethodBinding met
 			invoke(Opcodes.OPC_invokevirtual, 1, 1, ConstantPool.JavaLangInvokeSerializedLambdaConstantPoolName,
 					ConstantPool.GetImplMethodSignature, ConstantPool.GetImplMethodSignatureSignature,
 					getPopularBinding(ConstantPool.JavaLangStringConstantPoolName));
-			ldc(new String(mb.signature())); // e.g. "(I)I"
+			ldc(new String(mb.original().signature())); // e.g. "(I)I"
 			invokeObjectEquals();
 			ifeq(nextOne);
 
@@ -3720,10 +3759,6 @@ final public byte[] getContents() {
 
 /**
  * Returns the type that should be substituted to original binding declaring class as the proper receiver type
- * @param currentScope
- * @param codegenBinding
- * @param actualReceiverType
- * @param isImplicitThisReceiver
  * @return the receiver type to use in constant pool
  */
 public static TypeBinding getConstantPoolDeclaringClass(Scope currentScope, FieldBinding codegenBinding, TypeBinding actualReceiverType, boolean isImplicitThisReceiver) {
@@ -3750,10 +3785,6 @@ public static TypeBinding getConstantPoolDeclaringClass(Scope currentScope, Fiel
 
 /**
  * Returns the type that should be substituted to original binding declaring class as the proper receiver type
- * @param currentScope
- * @param codegenBinding
- * @param actualReceiverType
- * @param isImplicitThisReceiver
  * @return the receiver type to use in constant pool
  */
 public static TypeBinding getConstantPoolDeclaringClass(Scope currentScope, MethodBinding codegenBinding, TypeBinding actualReceiverType, boolean isImplicitThisReceiver) {
@@ -4578,6 +4609,9 @@ public void init(ClassFile targetClassFile) {
 
 	this.clearTypeBindingStack();
 	this.lastSwitchCumulativeSyntheticVars = 0;
+	this.patternAccessorMap.clear();
+	this.patternCatchStack.clear();
+	this.scopeToCatchVar.clear();
 }
 
 /**
@@ -5559,6 +5593,17 @@ public void invokeStringValueOf(int typeID) {
 			getPopularBinding(ConstantPool.JavaLangStringConstantPoolName));
 }
 
+public void invokeThrowableToString() {
+	char[] declaringClass = ConstantPool.JavaLangThrowableConstantPoolName;
+	invoke(
+			Opcodes.OPC_invokevirtual,
+			1, // receiverAndArgsSize
+			1, // return type size
+			declaringClass,
+			ConstantPool.ToString,
+			ConstantPool.ToStringSignature,
+			getPopularBinding(ConstantPool.JavaLangStringConstantPoolName));
+}
 public void invokeSystemArraycopy() {
 	// invokestatic #21 <Method java/lang/System.arraycopy(Ljava/lang/Object;ILjava/lang/Object;II)V>
 	invoke(
@@ -6727,6 +6772,31 @@ public void newJavaLangIncompatibleClassChangeError() {
 	this.bCodeStream[this.classFileOffset++] = Opcodes.OPC_new;
 	writeUnsignedShort(this.constantPool.literalIndexForType(ConstantPool.JavaLangIncompatibleClassChangeErrorConstantPoolName));
 }
+public void newJavaLangMatchException() {
+	// new: java.lang.MatchException
+	this.countLabels = 0;
+	this.stackDepth++;
+	pushTypeBinding(ConstantPool.JavaLangMatchExceptionConstantPoolName);
+	if (this.stackDepth > this.stackMax)
+		this.stackMax = this.stackDepth;
+	if (this.classFileOffset + 2 >= this.bCodeStream.length) {
+		resizeByteArray();
+	}
+	this.position++;
+	this.bCodeStream[this.classFileOffset++] = Opcodes.OPC_new;
+	writeUnsignedShort(this.constantPool.literalIndexForType(ConstantPool.JavaLangMatchExceptionConstantPoolName));
+}
+public void invokeJavaLangMatchExceptionConstructor() {
+	// invokespecial: java.lang.MatchException.<init>(Ljava/lang/String;Ljava/lang/Throwable;)V
+	invoke(
+			Opcodes.OPC_invokespecial,
+			3, // receiverAndArgsSize
+			0, // return type size
+			ConstantPool.JavaLangMatchExceptionConstantPoolName,
+			ConstantPool.Init,
+			ConstantPool.JavaLangMatchExceptionNewInstanceSignature,
+			null);
+}
 public void newNoClassDefFoundError() {
 	// new: java.lang.NoClassDefFoundError
 	this.countLabels = 0;
@@ -7513,7 +7583,8 @@ public void swap() {
 	this.bCodeStream[this.classFileOffset++] = Opcodes.OPC_swap;
 }
 
-public void tableswitch(CaseLabel defaultLabel, int low, int high, int[] keys, int[] sortedIndexes, int[] mapping, CaseLabel[] casesLabel) {
+public void tableswitch(CaseLabel defaultLabel, int low, int high, int[] keys,
+		int[] sortedIndexes, int[] mapping, CaseLabel[] casesLabel) {
 	this.countLabels = 0;
 	this.stackDepth--;
 	popTypeBinding();
@@ -7538,12 +7609,13 @@ public void tableswitch(CaseLabel defaultLabel, int low, int high, int[] keys, i
 	defaultLabel.branch();
 	writeSignedWord(low);
 	writeSignedWord(high);
-	int i = low, j = low;
+	int i = low, j = 0;
 	// the index j is used to know if the index i is one of the missing entries in case of an
 	// optimized tableswitch
+
 	while (true) {
-		int index;
-		int key = keys[index = sortedIndexes[j - low]];
+		int index = sortedIndexes[j];
+		int key = keys[index];
 		if (key == i) {
 			casesLabel[mapping[index]].branch();
 			j++;
@@ -7751,5 +7823,71 @@ public void clearTypeBindingStack() {
 	if (!isSwitchStackTrackingActive())
 		return;
 	this.switchSaveTypeBindings.clear();
+}
+public void addPatternCatchExceptionInfo(BlockScope key, LocalVariableBinding catchVar) {
+	this.patternCatchStack.push(key);
+	this.scopeToCatchVar.put(key, catchVar);
+}
+public void removePatternCatchExceptionInfo(BlockScope key, boolean addTargetGoto) {
+	this.addPatternAccessorExceptionHandler(key, addTargetGoto);
+	this.patternCatchStack.pop();
+	this.scopeToCatchVar.remove(key);
+}
+public void addPatternAccessorExceptionHandler(BlockScope scope, boolean addTarget) {
+	List<ExceptionLabel> patternExceptionLabels = this.patternAccessorMap.get(scope);
+	if (patternExceptionLabels == null || patternExceptionLabels.isEmpty())
+		return;
+
+	BranchLabel target = null;
+	if (addTarget) {
+		target = new BranchLabel(this);
+		goto_(target);
+	}
+	List<LocalVariableBinding> localsToReinit = new ArrayList<>();
+	if (scope instanceof MethodScope) {
+		LocalVariableBinding[] locals1 = scope.locals;
+		int numLocals = scope.localIndex;
+		int pos = this.position;
+		for (int i = 0; i < numLocals; ++i) {
+			LocalVariableBinding local = locals1[i];
+			if (local.initializationCount == 0)
+				continue;
+			if (local.initializationPCs[((local.initializationCount - 1) << 1) + 1] == -1) {
+				locals1[i].recordInitializationEndPC(pos);
+				localsToReinit.add(local);
+			}
+		}
+	} else {
+		this.exitUserScope(scope);
+	}
+	pushExceptionOnStack(TypeBinding.wellKnownType(scope, TypeIds.T_JavaLangThrowable));
+	patternExceptionLabels.forEach(e -> e.place());
+
+	LocalVariableBinding catchVar = this.scopeToCatchVar.get(scope);
+
+	if (catchVar == null)
+		return;
+
+ 	store(catchVar, false);
+	record(catchVar);
+	catchVar.recordInitializationStartPC(this.position);
+	newJavaLangMatchException();
+	dup();
+	load(catchVar);
+	invokeThrowableToString();
+
+	load(catchVar);
+	removeVariable(catchVar);
+	invokeJavaLangMatchExceptionConstructor();
+	athrow();
+	if (target != null) {
+		target.place();
+	}
+	if (scope instanceof MethodScope && localsToReinit.size() > 0) {
+		for (LocalVariableBinding local : localsToReinit) {
+			int pos = this.position;
+			local.recordInitializationStartPC(pos);
+		}
+	}
 }
 }

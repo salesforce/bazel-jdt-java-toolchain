@@ -501,8 +501,6 @@ public final char[] constantPoolName() {
 
 /**
  * After method verifier has finished, fill in missing @NonNull specification from the applicable default.
- * @param needToApplyParameterNonNullDefault
- * @param needToApplyReturnNonNullDefault
  */
 protected void fillInDefaultNonNullness(AbstractMethodDeclaration sourceMethod, boolean needToApplyReturnNonNullDefault, ParameterNonNullDefaultProvider needToApplyParameterNonNullDefault) {
 	if (this.parameterNonNullness == null)
@@ -563,9 +561,6 @@ protected void fillInDefaultNonNullness18(AbstractMethodDeclaration sourceMethod
 					if (sourceMethod != null)
 						sourceMethod.arguments[i].binding.type = this.parameters[i];
 				}
-			} else if (sourceMethod != null && (parameter.tagBits & TagBits.AnnotationNonNull) != 0
-							&& sourceMethod.arguments[i].hasNullTypeAnnotation(AnnotationPosition.MAIN_TYPE)) {
-				sourceMethod.scope.problemReporter().nullAnnotationIsRedundant(sourceMethod, i);
 			}
 		}
 		if (added)
@@ -1354,7 +1349,7 @@ public TypeVariableBinding[] typeVariables() {
 }
 //pre: null annotation analysis is enabled
 public boolean hasNonNullDefaultForReturnType(AbstractMethodDeclaration srcMethod) {
-	return hasNonNullDefaultFor(Binding.DefaultLocationReturnType, srcMethod, srcMethod == null ? -1 : srcMethod.declarationSourceStart);
+	return hasNonNullDefaultForType(this.returnType, Binding.DefaultLocationReturnType, srcMethod, srcMethod == null ? -1 : srcMethod.declarationSourceStart);
 }
 
 static int getNonNullByDefaultValue(AnnotationBinding annotation) {
@@ -1412,7 +1407,7 @@ public ParameterNonNullDefaultProvider hasNonNullDefaultForParameter(AbstractMet
 			// parameter specific NNBD found
 			b = (nonNullByDefaultValue & Binding.DefaultLocationParameter) != 0;
 		} else {
-			b = hasNonNullDefaultFor(Binding.DefaultLocationParameter, srcMethod, start);
+			b = hasNonNullDefaultForType(this.parameters[i], Binding.DefaultLocationParameter, srcMethod, start);
 		}
 		if (b) {
 			trueFound = true;
@@ -1427,12 +1422,14 @@ public ParameterNonNullDefaultProvider hasNonNullDefaultForParameter(AbstractMet
 		return trueFound ? ParameterNonNullDefaultProvider.TRUE_PROVIDER : ParameterNonNullDefaultProvider.FALSE_PROVIDER;
 	}
 //pre: null annotation analysis is enabled
-private boolean hasNonNullDefaultFor(int location, AbstractMethodDeclaration srcMethod, int start) {
+private boolean hasNonNullDefaultForType(TypeBinding type, int location, AbstractMethodDeclaration srcMethod, int start) {
+	if (type != null && !type.acceptsNonNullDefault() && srcMethod != null && srcMethod.scope.environment().usesNullTypeAnnotations())
+		return false;
 	if ((this.modifiers & ExtraCompilerModifiers.AccIsDefaultConstructor) != 0)
 		return false;
 	if (this.defaultNullness != 0)
 		return (this.defaultNullness & location) != 0;
-	return this.declaringClass.hasNonNullDefaultFor(location, start);
+	return this.declaringClass.hasNonNullDefaultForType(null /*type was already checked*/, location, start);
 }
 
 public boolean redeclaresPublicObjectMethod(Scope scope) {
@@ -1463,5 +1460,38 @@ public void updateTypeVariableBinding(TypeVariableBinding previousBinding, TypeV
 			}
 		}
 	}
+}
+
+/**
+ * Identifies whether the method has Polymorphic signature based on <a href=https://docs.oracle.com/javase/specs/jls/se11/html/jls-15.html#jls-15.12.3>jls-15.12.3</a><br/>
+ *
+ * Definition reproduced here. <br/><br/>
+ *
+ * A method is signature polymorphic if all of the following are true:
+ *  <li> It is declared in the java.lang.invoke.MethodHandle class or the java.lang.invoke.VarHandle class. </li>
+ *  <li> It has a single variable arity parameter (§8.4.1) whose declared type is Object[]. </li>
+ *  <li> It is native. </li>
+ * <br/>
+ * @return true if the method has Polymorphic Signature
+ */
+public boolean hasPolymorphicSignature(Scope scope) {
+	if ((this.tagBits & TagBits.AnnotationPolymorphicSignature) != 0) {
+		return true;
+	}
+	if (this.isNative()	&& this.isVarargs() && this.parameters.length == 1) {
+		/*
+		 *  here type will be arrayType we will come here only if the method is of type
+		 *  varargs(represented by arraytype) and with only one parameter.
+		 */
+		if (this.parameters[0].leafComponentType().id == TypeIds.T_JavaLangObject) {
+			ReferenceBinding declaringClassLocal = this.declaringClass;
+			if ((declaringClassLocal != null) && (declaringClassLocal.id == scope.getJavaLangInvokeMethodHandle().id
+					|| declaringClassLocal.id == scope.getJavaLangInvokeVarHandle().id)) {
+				return true;
+			}
+		}
+	}
+
+	return false;
 }
 }

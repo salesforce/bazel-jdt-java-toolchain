@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007 - 2017 BEA Systems, Inc. and others
+ * Copyright (c) 2007 - 2023 BEA Systems, Inc. and others
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -45,6 +45,7 @@ import org.eclipse.jdt.internal.compiler.lookup.ParameterizedTypeBinding;
 import org.eclipse.jdt.internal.compiler.lookup.ReferenceBinding;
 import org.eclipse.jdt.internal.compiler.lookup.TypeBinding;
 import org.eclipse.jdt.internal.compiler.lookup.TypeVariableBinding;
+import org.eclipse.jdt.internal.compiler.lookup.VariableBinding;
 
 /**
  * Utilities for working with types (as opposed to elements).
@@ -59,7 +60,7 @@ public class TypesImpl implements Types {
      * not create their own; they should ask the env for it.
      */
     public TypesImpl(BaseProcessingEnvImpl env) {
-        _env = env;
+        this._env = env;
     }
 
     /* (non-Javadoc)
@@ -70,7 +71,7 @@ public class TypesImpl implements Types {
         switch(t.getKind()) {
         case DECLARED :
         case TYPEVAR :
-            return _env.getFactory().newElement(((TypeMirrorImpl)t).binding());
+            return this._env.getFactory().newElement(((TypeMirrorImpl)t).binding());
         default:
             break;
         }
@@ -142,9 +143,9 @@ public class TypesImpl implements Types {
 			typeMirror = findMemberInHierarchy(referenceBinding, elementImpl._binding, new MemberInTypeFinder() {
 				@Override
 				public TypeMirror find(ReferenceBinding typeBinding, Binding memberBinding) {
-					FieldBinding fieldBinding = (FieldBinding) memberBinding;
+					VariableBinding variableBinding = (VariableBinding) memberBinding;
 					for (FieldBinding field : typeBinding.fields()) {
-						if (CharOperation.equals(field.name, fieldBinding.name)) {
+						if (CharOperation.equals(field.name, variableBinding.name)) {
 							return TypesImpl.this._env.getFactory().newTypeMirror(field);
 						}
 					}
@@ -244,8 +245,8 @@ public class TypesImpl implements Types {
     public TypeElement boxedClass(PrimitiveType p) {
         PrimitiveTypeImpl primitiveTypeImpl = (PrimitiveTypeImpl) p;
         BaseTypeBinding baseTypeBinding = (BaseTypeBinding)primitiveTypeImpl._binding;
-        TypeBinding boxed = _env.getLookupEnvironment().computeBoxingType(baseTypeBinding);
-        return (TypeElement) _env.getFactory().newElement(boxed);
+        TypeBinding boxed = this._env.getLookupEnvironment().computeBoxingType(baseTypeBinding);
+        return (TypeElement) this._env.getFactory().newElement(boxed);
     }
 
     @Override
@@ -292,17 +293,17 @@ public class TypesImpl implements Types {
         if (binding instanceof ReferenceBinding) {
         	TypeBinding type = ((ReferenceBinding) binding).erasure();
         	if (type.isGenericType()) {
-        		type = _env.getLookupEnvironment().convertToRawType(type, false);
+        		type = this._env.getLookupEnvironment().convertToRawType(type, false);
         	}
-            return _env.getFactory().newTypeMirror(type);
+            return this._env.getFactory().newTypeMirror(type);
         }
         if (binding instanceof ArrayBinding) {
             TypeBinding typeBinding = (TypeBinding) binding;
             TypeBinding leafType = typeBinding.leafComponentType().erasure();
             if (leafType.isGenericType()) {
-            	leafType = _env.getLookupEnvironment().convertToRawType(leafType, false);
+            	leafType = this._env.getLookupEnvironment().convertToRawType(leafType, false);
             }
-            return _env.getFactory().newTypeMirror(
+            return this._env.getFactory().newTypeMirror(
                     this._env.getLookupEnvironment().createArrayType(leafType,
                             typeBinding.dimensions()));
         }
@@ -313,7 +314,7 @@ public class TypesImpl implements Types {
     public ArrayType getArrayType(TypeMirror componentType) {
         TypeMirrorImpl typeMirrorImpl = (TypeMirrorImpl) componentType;
         TypeBinding typeBinding = (TypeBinding) typeMirrorImpl._binding;
-        return (ArrayType) _env.getFactory().newTypeMirror(
+        return (ArrayType) this._env.getFactory().newTypeMirror(
                 this._env.getLookupEnvironment().createArrayType(
                         typeBinding.leafComponentType(),
                         typeBinding.dimensions() + 1));
@@ -337,7 +338,7 @@ public class TypesImpl implements Types {
         if (typeArgsLength == 0) {
             if (elementBinding.isGenericType()) {
                 // per javadoc,
-                return (DeclaredType) _env.getFactory().newTypeMirror(this._env.getLookupEnvironment().createRawType(elementBinding, null));
+                return (DeclaredType) this._env.getFactory().newTypeMirror(this._env.getLookupEnvironment().createRawType(elementBinding, null));
             }
             return (DeclaredType)typeElem.asType();
         } else if (typeArgsLength != typeVariablesLength) {
@@ -358,7 +359,7 @@ public class TypesImpl implements Types {
             enclosing = this._env.getLookupEnvironment().createRawType(enclosing, null);
         }
 
-        return (DeclaredType) _env.getFactory().newTypeMirror(
+        return (DeclaredType) this._env.getFactory().newTypeMirror(
                 this._env.getLookupEnvironment().createParameterizedType(elementBinding, typeArguments, enclosing));
     }
 
@@ -384,12 +385,12 @@ public class TypesImpl implements Types {
             if (elementBinding.isGenericType()) {
                 // e.g., Outer.Inner<T> but T is not specified
                 // Per javadoc on interface, must return the raw type Outer.Inner
-                return (DeclaredType) _env.getFactory().newTypeMirror(
-                        _env.getLookupEnvironment().createRawType(elementBinding, enclosingType));
+                return (DeclaredType) this._env.getFactory().newTypeMirror(
+                        this._env.getLookupEnvironment().createRawType(elementBinding, enclosingType));
             } else {
                 // e.g., Outer<Long>.Inner
-                ParameterizedTypeBinding ptb = _env.getLookupEnvironment().createParameterizedType(elementBinding, null, enclosingType);
-                return (DeclaredType) _env.getFactory().newTypeMirror(ptb);
+                ParameterizedTypeBinding ptb = this._env.getLookupEnvironment().createParameterizedType(elementBinding, null, enclosingType);
+                return (DeclaredType) this._env.getFactory().newTypeMirror(ptb);
             }
         } else if (typeArgsLength != typeVariablesLength) {
             throw new IllegalArgumentException("Number of typeArguments doesn't match the number of formal parameters of typeElem"); //$NON-NLS-1$
@@ -403,23 +404,23 @@ public class TypesImpl implements Types {
             }
             typeArguments[i] = (TypeBinding) binding;
         }
-        return (DeclaredType) _env.getFactory().newTypeMirror(
+        return (DeclaredType) this._env.getFactory().newTypeMirror(
                 this._env.getLookupEnvironment().createParameterizedType(elementBinding, typeArguments, enclosingType));
     }
 
     @Override
     public NoType getNoType(TypeKind kind) {
-        return _env.getFactory().getNoType(kind);
+        return this._env.getFactory().getNoType(kind);
     }
 
     @Override
     public NullType getNullType() {
-        return _env.getFactory().getNullType();
+        return this._env.getFactory().getNullType();
     }
 
     @Override
     public PrimitiveType getPrimitiveType(TypeKind kind) {
-        return _env.getFactory().getPrimitiveType(kind);
+        return this._env.getFactory().getPrimitiveType(kind);
     }
 
     @Override
@@ -430,7 +431,7 @@ public class TypesImpl implements Types {
         if (extendsBound != null) {
             TypeMirrorImpl extendsBoundMirrorType = (TypeMirrorImpl) extendsBound;
             TypeBinding typeBinding = (TypeBinding) extendsBoundMirrorType._binding;
-            return (WildcardType) _env.getFactory().newTypeMirror(
+            return (WildcardType) this._env.getFactory().newTypeMirror(
                     this._env.getLookupEnvironment().createWildcard(
                             null,
                             0,
@@ -441,14 +442,14 @@ public class TypesImpl implements Types {
         if (superBound != null) {
             TypeMirrorImpl superBoundMirrorType = (TypeMirrorImpl) superBound;
             TypeBinding typeBinding = (TypeBinding) superBoundMirrorType._binding;
-            return new WildcardTypeImpl(_env, this._env.getLookupEnvironment().createWildcard(
+            return new WildcardTypeImpl(this._env, this._env.getLookupEnvironment().createWildcard(
                     null,
                     0,
                     typeBinding,
                     null,
                     Wildcard.SUPER));
         }
-        return new WildcardTypeImpl(_env, this._env.getLookupEnvironment().createWildcard(
+        return new WildcardTypeImpl(this._env, this._env.getLookupEnvironment().createWildcard(
                 null,
                 0,
                 null,
@@ -475,7 +476,7 @@ public class TypesImpl implements Types {
             return true;
         }
 
-        TypeBinding convertedType = _env.getLookupEnvironment().computeBoxingType((TypeBinding)b1);
+        TypeBinding convertedType = this._env.getLookupEnvironment().computeBoxingType((TypeBinding)b1);
         return null != convertedType && convertedType.isCompatibleWith((TypeBinding)b2);
     }
 
@@ -572,12 +573,12 @@ public class TypesImpl implements Types {
             throw new IllegalArgumentException("Given type mirror cannot be unboxed"); //$NON-NLS-1$
         }
         ReferenceBinding boxed = (ReferenceBinding)((TypeMirrorImpl)t)._binding;
-        TypeBinding unboxed = _env.getLookupEnvironment().computeBoxingType(boxed);
+        TypeBinding unboxed = this._env.getLookupEnvironment().computeBoxingType(boxed);
         if (unboxed.kind() != Binding.BASE_TYPE) {
             // No boxing conversion was found
             throw new IllegalArgumentException();
         }
-        return (PrimitiveType) _env.getFactory().newTypeMirror((BaseTypeBinding)unboxed);
+        return (PrimitiveType) this._env.getFactory().newTypeMirror(unboxed);
     }
 
 }

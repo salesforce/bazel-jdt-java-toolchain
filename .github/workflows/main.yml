@@ -75,6 +75,9 @@ jobs:
     - name: Test Compile & Test
       run: |
         cd examples/
+        echo "JAVA_HOME=$JAVA_HOME"
+        java --version
+        "${GITHUB_WORKSPACE}/bin/bazel" info
         "${GITHUB_WORKSPACE}/bin/bazel" build --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
         "${GITHUB_WORKSPACE}/bin/bazel" test --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
       

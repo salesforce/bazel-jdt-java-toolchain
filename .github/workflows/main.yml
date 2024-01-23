@@ -47,7 +47,7 @@ jobs:
       fail-fast: false # we want all results
       matrix:
         java_language_version: [11, 17, 21]
-        java_runtime_version: [remotejdk_11, remotejdk_17, remotejdk_21, localjdk]
+        java_runtime_version: [remotejdk_11, remotejdk_17, remotejdk_21, local_jdk]
         
     steps:
     - uses: actions/checkout@v2

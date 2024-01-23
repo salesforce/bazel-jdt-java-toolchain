@@ -46,6 +46,7 @@ jobs:
     strategy:
       fail-fast: false # we want all results
       matrix:
+        compiler: [ecj, javac]
         java_language_version: [11, 17, 21]
         java_runtime_version: [remotejdk_11, remotejdk_17, remotejdk_21, local_jdk]
         
@@ -72,7 +73,8 @@ jobs:
         "${GITHUB_WORKSPACE}/bin/bazel" build :JdtJavaBuilder_deploy.jar
         cp -fv bazel-bin/JdtJavaBuilder_deploy.jar compiler/export/
 
-    - name: Test Compile & Test
+    - name: Test Compile & Test with ECJ
+      if: matrix.compiler == 'ecj'
       run: |
         cd examples/
         echo "JAVA_HOME=$JAVA_HOME"
@@ -81,4 +83,14 @@ jobs:
         "${GITHUB_WORKSPACE}/bin/bazel" build --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
         "${GITHUB_WORKSPACE}/bin/bazel" test --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
       
+    - name: Test Compile & Test with javac
+      if: matrix.compiler == 'java'
+      run: |
+        cd examples/
+        echo "JAVA_HOME=$JAVA_HOME"
+        java --version
+        sed -i '/extra_toolchains/d' .bazelrc
+        "${GITHUB_WORKSPACE}/bin/bazel" info
+        "${GITHUB_WORKSPACE}/bin/bazel" build --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
+        "${GITHUB_WORKSPACE}/bin/bazel" test --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
       

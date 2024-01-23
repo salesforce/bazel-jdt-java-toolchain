@@ -340,6 +340,16 @@ public class BlazeEcjMain {
 			errWriter.println("-----------------");
 			errWriter.println();
 			errWriter.println();
+			errWriter.println("-----------------");
+			errWriter.println("java.home:           " + System.getProperty("java.home"));
+			errWriter.println("java.version:        " + System.getProperty("java.version"));
+			errWriter.println("java.vm.name:        " + System.getProperty("java.vm.name"));
+			errWriter.println("java.vm.version:     " + System.getProperty("java.vm.version"));
+			errWriter.println("java.vendor:         " + System.getProperty("java.vendor"));
+			errWriter.println("java.vendor.version: " + System.getProperty("java.vendor.version"));
+			errWriter.println("-----------------");
+			errWriter.println();
+			errWriter.println();
 		}
 
 		BlazeJavacStatistics.Builder builder = BlazeJavacStatistics.newBuilder();

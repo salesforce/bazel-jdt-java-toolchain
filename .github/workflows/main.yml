@@ -50,6 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     
     strategy:
+      fail-fast: false # we want all results
       matrix:
         bazeljdk: [remotejdk_11, remotejdk_17, remotejdk_21]
         

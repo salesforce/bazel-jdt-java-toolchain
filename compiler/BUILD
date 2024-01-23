@@ -67,5 +67,4 @@ java_library(
         ["src/main/ecj/**"],
         exclude = ["**/*.java"],
     ),
-    #deps = ["//compiler/third_party/ecj:javax17api"],
 )

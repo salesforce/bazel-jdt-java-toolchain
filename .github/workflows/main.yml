@@ -77,11 +77,14 @@ jobs:
         bazelisk info
         bazelisk clean
 
+    - name: Echo Bazel Flags
+      run: |
+        echo "using --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }}"
+
     - name: Test Compile & Test with ECJ
       if: matrix.compiler == 'ecj'
       run: |
         cd examples/
-        echo "using --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }}"
         bazelisk build --config=${{ matrix.compiler }} --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }} //...
         bazelisk test --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }} //...
       
@@ -89,7 +92,6 @@ jobs:
       if: matrix.compiler == 'ecjtool'
       run: |
         cd examples/
-        echo "using --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }}"
         bazelisk build --config=${{ matrix.compiler }} --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }} //...
         bazelisk test --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }} //...
       
@@ -97,7 +99,6 @@ jobs:
       if: matrix.compiler == 'javac'
       run: |
         cd examples/
-        echo "using --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }}"
         bazelisk build --config=${{ matrix.compiler }} --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }} //...
         bazelisk test --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }} //...
         

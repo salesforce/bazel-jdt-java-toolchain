@@ -81,27 +81,12 @@ jobs:
       run: |
         echo "using --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }}"
 
-    - name: Test Compile & Test with ECJ
-      if: matrix.compiler == 'ecj'
+    - name: Test Compile & Test
       run: |
         cd examples/
         bazelisk build --config=${{ matrix.compiler }} --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }} //...
         bazelisk test --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }} //...
       
-    - name: Test Compile & Test with ECJ Tool
-      if: matrix.compiler == 'ecjtool'
-      run: |
-        cd examples/
-        bazelisk build --config=${{ matrix.compiler }} --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }} //...
-        bazelisk test --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }} //...
-      
-    - name: Test Compile & Test with javac
-      if: matrix.compiler == 'javac'
-      run: |
-        cd examples/
-        bazelisk build --config=${{ matrix.compiler }} --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }} //...
-        bazelisk test --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }} //...
-        
     - name: Dump Test Logs when failed
       if: ${{ failure() }}
       run: |

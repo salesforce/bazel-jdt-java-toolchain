@@ -82,15 +82,9 @@ remotejdk_21/bin/java --version
 }
 
 
-announce "remotejdk_21/bin/javac @compile.params"
-remotejdk_21/bin/javac @compile.params || true
+announce "remotejdk_21/bin/javac $@"
+remotejdk_21/bin/javac "$@" || warn "javac failed"
 
-announce "remotejdk_21/bin/javac @compile2.params"
-remotejdk_21/bin/javac @compile2.params || true
-
-announce "remotejdk_21/bin/java -jar ecj-4.30.jar @compile.params"
-remotejdk_21/bin/java -jar ecj-4.30.jar @compile.params || true
-
-announce "remotejdk_21/bin/java -jar ecj-4.30.jar @compile2.params"
-remotejdk_21/bin/java -jar ecj-4.30.jar @compile2.params || true
+announce "remotejdk_21/bin/java -jar ecj-4.30.jar $@"
+remotejdk_21/bin/java -jar ecj-4.30.jar "$@" || warn "ECJ failed"
 

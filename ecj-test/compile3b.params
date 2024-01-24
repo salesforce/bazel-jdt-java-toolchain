@@ -1,0 +1,11 @@
+-d
+bin
+-s
+src-gen
+-verbose
+-source
+11
+-target
+11
+-proc:none
+src/allow.java

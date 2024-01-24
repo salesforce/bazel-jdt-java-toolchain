@@ -31,6 +31,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -49,6 +50,7 @@ import org.eclipse.jdt.internal.compiler.batch.FileSystem;
 import org.eclipse.jdt.internal.compiler.batch.FileSystem.Classpath;
 import org.eclipse.jdt.internal.compiler.batch.FileSystem.ClasspathAnswer;
 import org.eclipse.jdt.internal.compiler.batch.Main;
+import org.eclipse.jdt.internal.compiler.classfmt.ClassFileConstants;
 import org.eclipse.jdt.internal.compiler.env.ICompilationUnit;
 import org.eclipse.jdt.internal.compiler.impl.CompilerOptions;
 import org.eclipse.jdt.internal.compiler.problem.ProblemSeverities;
@@ -526,7 +528,7 @@ public class BlazeEcjMain {
 		// arguments.classPath());
 
 		// -bootclasspath is only allowed when --release is not specified (https://github.com/eclipse-jdt/eclipse.jdt.core/issues/1903)
-		if (!hasReleaseOptionSet(arguments.javacOptions()) && !arguments.bootClassPath().isEmpty()) {
+		if (isBootclasspathOrJavaHomeAllowed(arguments.javacOptions()) && !arguments.bootClassPath().isEmpty()) {
 			ecjArguments.add("-bootclasspath");
 			ecjArguments.add(arguments.bootClassPath().stream().map(Path::toString).collect(joining(":")));
 		}
@@ -545,18 +547,30 @@ public class BlazeEcjMain {
 		}
 
 		// --system is only allowed when --release is not specified (https://github.com/eclipse-jdt/eclipse.jdt.core/issues/1903)
-		if (!hasReleaseOptionSet(arguments.javacOptions()) && arguments.system() != null) {
+		if (isBootclasspathOrJavaHomeAllowed(arguments.javacOptions()) && arguments.system() != null) {
 			ecjArguments.add("--system");
 			ecjArguments.add(arguments.system().toString());
 		}
 	}
 
-	private static boolean hasReleaseOptionSet(ImmutableList<String> javacOptions) {
-		// -bootclasspath not supported at compliance level 9 and above
+	private static boolean isBootclasspathOrJavaHomeAllowed(ImmutableList<String> javacOptions) {
+		// neither -bootclasspath nor --system is supported at compliance level 9 and above
 
 		// note, we can rely on the fact that ReleaseOptionNormalizer normalized the
 		// javacOptions already; however, `--release` trumps everything
-		return javacOptions.contains("--release");
+		if(javacOptions.contains("--release"))
+			return false;
+
+		for (Iterator<String> stream = javacOptions.iterator(); stream.hasNext();) {
+			String option = stream.next();
+
+			if (option.equals("-target")) {
+				long versionToJDKLevel = CompilerOptions.versionToJdkLevel((String) stream.next());
+				return versionToJDKLevel <= ClassFileConstants.JDK1_8; // only when < 9
+			}
+		}
+
+		return true; // allow it
 	}
 
 //  /**

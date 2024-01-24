@@ -305,8 +305,8 @@ public class BlazeEcjMain {
 		PrintWriter errWriter = new PrintWriter(errOutput);
 
 		// note, all -Xecj... are "blaze" specific javac options
-		String collectUsedDepsOption = getJavacOptionValue(arguments.blazeJavacOptions(), "-Xecj_collect_used_deps");
-		String problemSeverityPreferencesFile = getJavacOptionValue(arguments.blazeJavacOptions(),
+		String collectUsedDepsOption = JavacOptions.getJavacOptionValue(arguments.blazeJavacOptions(), "-Xecj_collect_used_deps");
+		String problemSeverityPreferencesFile = JavacOptions.getJavacOptionValue(arguments.blazeJavacOptions(),
 				"-Xecj_problem_severity_preferences");
 
 		Map<String, String> problemSeverityPreferences = null;
@@ -400,33 +400,6 @@ public class BlazeEcjMain {
 	private static boolean isDisabled(String problemSeverityPreferences) {
 		Set<String> turnOffSettings = Set.of("off", "none", "disabled", "");
 		return turnOffSettings.contains(problemSeverityPreferences);
-	}
-
-	/**
-	 * Go through the list of javac options and collect the value of the <b>last</b>
-	 * option found.
-	 * <p>
-	 * The reason we go with last is that we assume it's the most specific.
-	 * </p>
-	 *
-	 * @param javacOptions
-	 * @param optionName
-	 * @return
-	 */
-	private static String getJavacOptionValue(List<String> javacOptions, String optionName) {
-		String value = null; // last one wins
-		for (int i = 0; i < javacOptions.size(); i++) {
-			String option = javacOptions.get(i);
-			if (option.startsWith(optionName)) {
-				int separatorPos = option.indexOf('=');
-				if (separatorPos == -1 && javacOptions.size() > i + 1) {
-					value = javacOptions.get(i + 1);
-				} else {
-					value = option.substring(separatorPos + 1).trim();
-				}
-			}
-		}
-		return value;
 	}
 
 	static Map<String, String> loadProblemSeverityPreferences(Path compilerPreferencesFile) throws IOException {

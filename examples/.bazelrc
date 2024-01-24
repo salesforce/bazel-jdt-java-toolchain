@@ -4,11 +4,16 @@ build --java_language_version=11
 # Enable JDT toolchain
 build --extra_toolchains=//:all
 
+# additional option to improve verbosity during tests
+build:ecjtool --javacopt="-Xecj_use_tool_compiler -warn:none -verbose"
+build:ecj     --javacopt="-warn:none -verbose"
+
 # Short lived workers
 build --strategy=Javac=worker --worker_quit_after_build
 
 # no bzlmod yet
 common --noenable_bzlmod
+
 
 # enable debug output
 build --toolchain_resolution_debug=@@bazel_tools//tools/jdk:
@@ -16,6 +21,11 @@ build --explain=bazel_explain.log
 build --subcommands=pretty_print
 build --verbose_failures
 build --announce_rc
+
+# For debugging of unit tests
+test:debug --test_output=streamed
+test:debug --test_strategy=exclusive
+test:debug --test_timeout=9999
 
 # allow developers to tune the build with local overrides
 try-import %workspace%/.bazelrc-local

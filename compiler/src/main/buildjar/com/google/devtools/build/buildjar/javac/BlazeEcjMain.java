@@ -36,6 +36,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
 
 import javax.tools.Diagnostic;
 
@@ -193,13 +195,17 @@ public class BlazeEcjMain {
 			}
 
 			if (result.compiledTypes != null) {
+				SortedSet<String> sortedTypeNames = new TreeSet<>();
 				for (Object typename : result.compiledTypes.keySet()) {
 					String typeName = new String((char[]) typename);
 					int lastSlashPos = typeName.lastIndexOf('/');
 					if (lastSlashPos > -1) {
 						typeName = typeName.substring(lastSlashPos + 1);
 					}
-					builder.addTopLevel(typeName.replace('$', '.'));
+					sortedTypeNames.add(typeName.replace('$', '.'));
+				}
+				for (String typeName : sortedTypeNames) {
+					builder.addTopLevel(typeName);
 				}
 			}
 

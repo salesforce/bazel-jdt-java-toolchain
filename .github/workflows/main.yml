@@ -26,16 +26,9 @@ jobs:
           ~/.cache/bazelisk
         key: bazel
 
-    - name: Install bazelisk
-      run: |
-        curl -LO "https://github.com/bazelbuild/bazelisk/releases/download/v1.10.1/bazelisk-linux-amd64"
-        mkdir -p "${GITHUB_WORKSPACE}/bin/"
-        mv bazelisk-linux-amd64 "${GITHUB_WORKSPACE}/bin/bazel"
-        chmod +x "${GITHUB_WORKSPACE}/bin/bazel"
-
     - name: Build JdtJavaBuilder_deploy.jar
       run: |
-        "${GITHUB_WORKSPACE}/bin/bazel" build :JdtJavaBuilder_deploy.jar
+        bazelisk build :JdtJavaBuilder_deploy.jar
         cp -fv bazel-bin/JdtJavaBuilder_deploy.jar compiler/export/
 
   test:
@@ -61,16 +54,9 @@ jobs:
           ~/.cache/bazelisk
         key: bazel
 
-    - name: Install bazelisk
-      run: |
-        curl -LO "https://github.com/bazelbuild/bazelisk/releases/download/v1.10.1/bazelisk-linux-amd64"
-        mkdir -p "${GITHUB_WORKSPACE}/bin/"
-        mv bazelisk-linux-amd64 "${GITHUB_WORKSPACE}/bin/bazel"
-        chmod +x "${GITHUB_WORKSPACE}/bin/bazel"
-
     - name: Build JdtJavaBuilder_deploy.jar
       run: |
-        "${GITHUB_WORKSPACE}/bin/bazel" build :JdtJavaBuilder_deploy.jar
+        bazelisk build :JdtJavaBuilder_deploy.jar
         cp -fv bazel-bin/JdtJavaBuilder_deploy.jar compiler/export/
 
     - name: Test Compile & Test with ECJ
@@ -79,9 +65,9 @@ jobs:
         cd examples/
         echo "JAVA_HOME=$JAVA_HOME"
         java --version
-        "${GITHUB_WORKSPACE}/bin/bazel" info
-        "${GITHUB_WORKSPACE}/bin/bazel" build --config=${{ matrix.compiler }} --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
-        "${GITHUB_WORKSPACE}/bin/bazel" test --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
+        bazelisk info
+        bazelisk build --config=${{ matrix.compiler }} --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
+        bazelisk test --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
       
     - name: Test Compile & Test with ECJ Tool
       if: matrix.compiler == 'ecjtool'
@@ -89,9 +75,9 @@ jobs:
         cd examples/
         echo "JAVA_HOME=$JAVA_HOME"
         java --version
-        "${GITHUB_WORKSPACE}/bin/bazel" info
-        "${GITHUB_WORKSPACE}/bin/bazel" build --config=${{ matrix.compiler }} --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
-        "${GITHUB_WORKSPACE}/bin/bazel" test --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
+        bazelisk info
+        bazelisk build --config=${{ matrix.compiler }} --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
+        bazelisk test --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
       
     - name: Test Compile & Test with javac
       if: matrix.compiler == 'java'
@@ -100,7 +86,7 @@ jobs:
         echo "JAVA_HOME=$JAVA_HOME"
         java --version
         sed -i '/extra_toolchains/d' .bazelrc
-        "${GITHUB_WORKSPACE}/bin/bazel" info
-        "${GITHUB_WORKSPACE}/bin/bazel" build --config=${{ matrix.compiler }} --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
-        "${GITHUB_WORKSPACE}/bin/bazel" test --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
+        bazelisk info
+        bazelisk build --config=${{ matrix.compiler }} --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
+        bazelisk test --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
       

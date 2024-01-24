@@ -95,4 +95,10 @@ jobs:
         bazelisk info
         bazelisk build --config=${{ matrix.compiler }} --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
         bazelisk test --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
-      
+        
+    - name: Dump Test Logs when failed
+      if: ${{ failure() }}
+      run: |
+        cd  examples
+        find -L ./bazel-testlogs  -type f -name test.log -exec cat {} \;
+        

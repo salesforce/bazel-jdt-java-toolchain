@@ -1,0 +1,5 @@
+remotejdk*
+zulu*
+*.jar
+*.tar.gz
+bin/

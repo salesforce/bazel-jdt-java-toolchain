@@ -527,8 +527,8 @@ public class BlazeEcjMain {
 		// set]fileManager.setLocationFromPaths(StandardLocation.MODULE_PATH,
 		// arguments.classPath());
 
-		// -bootclasspath is only allowed when --release is not specified (https://github.com/eclipse-jdt/eclipse.jdt.core/issues/1903)
-		if (isBootclasspathOrJavaHomeAllowed(arguments.javacOptions()) && !arguments.bootClassPath().isEmpty()) {
+		// -bootclasspath is only allowed when --release is not specified and -target us below 8 (https://github.com/eclipse-jdt/eclipse.jdt.core/issues/1903)
+		if (isBootclasspathAllowed(arguments.javacOptions()) && !arguments.bootClassPath().isEmpty()) {
 			ecjArguments.add("-bootclasspath");
 			ecjArguments.add(arguments.bootClassPath().stream().map(Path::toString).collect(joining(":")));
 		}
@@ -547,14 +547,14 @@ public class BlazeEcjMain {
 		}
 
 		// --system is only allowed when --release is not specified (https://github.com/eclipse-jdt/eclipse.jdt.core/issues/1903)
-		if (isBootclasspathOrJavaHomeAllowed(arguments.javacOptions()) && arguments.system() != null) {
+		if (isSystemAllowed(arguments.javacOptions()) && arguments.system() != null) {
 			ecjArguments.add("--system");
 			ecjArguments.add(arguments.system().toString());
 		}
 	}
 
-	private static boolean isBootclasspathOrJavaHomeAllowed(ImmutableList<String> javacOptions) {
-		// neither -bootclasspath nor --system is supported at compliance level 9 and above
+	private static boolean isBootclasspathAllowed(ImmutableList<String> javacOptions) {
+		// -bootclasspath is not supported at compliance level 9 and above
 
 		// note, we can rely on the fact that ReleaseOptionNormalizer normalized the
 		// javacOptions already; however, `--release` trumps everything
@@ -570,6 +570,16 @@ public class BlazeEcjMain {
 			}
 		}
 
+		return true; // allow it
+	}
+
+	private static boolean isSystemAllowed(ImmutableList<String> javacOptions) {
+		// note, we can rely on the fact that ReleaseOptionNormalizer normalized the
+		// javacOptions already; however, `--release` trumps everything
+		if(javacOptions.contains("--release"))
+			return false;
+
+		// in contrast to -bootclasspath --system is allowed in combination with -target
 		return true; // allow it
 	}
 

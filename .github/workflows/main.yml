@@ -63,6 +63,7 @@ jobs:
       if: matrix.compiler == 'ecj'
       run: |
         cd examples/
+        echo "using --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }}"
         echo "JAVA_HOME=$JAVA_HOME"
         java --version
         bazelisk info
@@ -73,6 +74,7 @@ jobs:
       if: matrix.compiler == 'ecjtool'
       run: |
         cd examples/
+        echo "using --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }}"
         echo "JAVA_HOME=$JAVA_HOME"
         java --version
         bazelisk info
@@ -83,6 +85,7 @@ jobs:
       if: matrix.compiler == 'java'
       run: |
         cd examples/
+        echo "using --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }}"
         echo "JAVA_HOME=$JAVA_HOME"
         java --version
         sed -i '/extra_toolchains/d' .bazelrc

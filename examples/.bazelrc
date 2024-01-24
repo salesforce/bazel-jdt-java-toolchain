@@ -4,10 +4,13 @@ build --java_language_version=11
 # Enable JDT toolchain
 build --extra_toolchains=//:all
 
+# rely on https://github.com/bazelbuild/bazel/issues/19945 to switch back to javac
+build:javac --extra_toolchains=//javac:all
+
 # additional option to improve verbosity during tests
 build:ecjtool --javacopt="-Xecj_use_tool_compiler -warn:none -verbose"
 build:ecj     --javacopt="-warn:none -verbose"
-build:javac   --javacopt="-warn:none -verbose"
+build:javac   --javacopt="-Xlint:none -verbose"
 
 # Short lived workers
 build --strategy=Javac=worker --worker_quit_after_build

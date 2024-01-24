@@ -92,7 +92,6 @@ jobs:
         echo "using --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }}"
         echo "JAVA_HOME=$JAVA_HOME"
         java --version
-        sed -i '/extra_toolchains/d' .bazelrc
         bazelisk info
         bazelisk build --config=${{ matrix.compiler }} --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
         bazelisk test --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...

@@ -32,7 +32,7 @@ RELEASES = (11, 17, 21)
 
 [
     default_jdt_toolchain(
-        name = "my_verbose_example",
+        name = "my_verbose_jdt_example",
         configuration = PREBUILT_TOOLCHAIN_CONFIGURATION,
         misc = [
             "-warn:all",  # turn on warning, which should give us an indicator JDT is used,

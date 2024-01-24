@@ -4,8 +4,17 @@ build --java_language_version=17
 # use a custom toolchain to produce 17 output with 21 api
 build --extra_toolchains=//:java17_toolchain_with_javax21api_definition
 
-# disable header compilation
+# additional option to improve verbosity during tests
+build:ecjtool --javacopt="-Xecj_use_tool_compiler -warn:none -verbose"
+build:ecj     --javacopt="-warn:none -verbose"
+
+# disable header compilation (does not work with classpath trick done by 'java17_toolchain_with_javax21api_definition')
 build --nojava_header_compilation
+
+# For debugging of unit tests
+test:debug --test_output=streamed
+test:debug --test_strategy=exclusive
+test:debug --test_timeout=9999
 
 # create a .bazelrc-local to customize further
 try-import %workspace%/.bazelrc-local

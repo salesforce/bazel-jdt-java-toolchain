@@ -36,7 +36,6 @@ RELEASES = (11, 17, 21)
         configuration = PREBUILT_TOOLCHAIN_CONFIGURATION,
         misc = [
             "-warn:all",  # turn on warning, which should give us an indicator JDT is used,
-            "-verbose",
         ],
         release = release,
     )

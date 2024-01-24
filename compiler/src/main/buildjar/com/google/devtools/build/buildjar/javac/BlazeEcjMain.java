@@ -31,7 +31,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -50,7 +49,6 @@ import org.eclipse.jdt.internal.compiler.batch.FileSystem;
 import org.eclipse.jdt.internal.compiler.batch.FileSystem.Classpath;
 import org.eclipse.jdt.internal.compiler.batch.FileSystem.ClasspathAnswer;
 import org.eclipse.jdt.internal.compiler.batch.Main;
-import org.eclipse.jdt.internal.compiler.classfmt.ClassFileConstants;
 import org.eclipse.jdt.internal.compiler.env.ICompilationUnit;
 import org.eclipse.jdt.internal.compiler.impl.CompilerOptions;
 import org.eclipse.jdt.internal.compiler.problem.ProblemSeverities;
@@ -527,7 +525,8 @@ public class BlazeEcjMain {
 		// set]fileManager.setLocationFromPaths(StandardLocation.MODULE_PATH,
 		// arguments.classPath());
 
-		if (isAllowedToAddBootClassPath(arguments.javacOptions()) && !arguments.bootClassPath().isEmpty()) {
+		// -bootclasspath is only allowed when --release is not specified (https://github.com/eclipse-jdt/eclipse.jdt.core/issues/1903)
+		if (!hasReleaseOptionSet(arguments.javacOptions()) && !arguments.bootClassPath().isEmpty()) {
 			ecjArguments.add("-bootclasspath");
 			ecjArguments.add(arguments.bootClassPath().stream().map(Path::toString).collect(joining(":")));
 		}
@@ -545,33 +544,19 @@ public class BlazeEcjMain {
 			ecjArguments.add(arguments.sourcePath().stream().map(Path::toString).collect(joining(":")));
 		}
 
-		if (arguments.system() != null) {
+		// --system is only allowed when --release is not specified (https://github.com/eclipse-jdt/eclipse.jdt.core/issues/1903)
+		if (!hasReleaseOptionSet(arguments.javacOptions()) && arguments.system() != null) {
 			ecjArguments.add("--system");
 			ecjArguments.add(arguments.system().toString());
 		}
 	}
 
-	private static boolean isAllowedToAddBootClassPath(ImmutableList<String> javacOptions) {
+	private static boolean hasReleaseOptionSet(ImmutableList<String> javacOptions) {
 		// -bootclasspath not supported at compliance level 9 and above
 
 		// note, we can rely on the fact that ReleaseOptionNormalizer normalized the
 		// javacOptions already; however, `--release` trumps everything
-		for (Iterator<String> stream = javacOptions.iterator(); stream.hasNext();) {
-			String option = stream.next();
-
-			if (option.equals("--release")) {
-				long releaseToJDKLevel = CompilerOptions.releaseToJDKLevel((String) stream.next());
-				return releaseToJDKLevel <= ClassFileConstants.JDK1_8;
-			}
-
-			else if (option.equals("-source")) {
-				long versionToJDKLevel = CompilerOptions.versionToJdkLevel((String) stream.next());
-				return versionToJDKLevel <= ClassFileConstants.JDK1_8;
-			}
-		}
-
-		// allow it
-		return false;
+		return javacOptions.contains("--release");
 	}
 
 //  /**
@@ -624,77 +609,6 @@ public class BlazeEcjMain {
 		} catch (ReflectiveOperationException e) {
 			// In earlier releases, set 'null' as the parent to delegate to the boot class
 			// loader.
-			return null;
-		}
-	}
-
-	/**
-	 * Translates any supported standard version starting at 1.3 up-to latest into
-	 * the corresponding constant from CompilerOptions
-	 */
-	private static String optionStringToVersion(String currentArg) {
-		switch (currentArg) {
-		case "1.3": //$NON-NLS-1$
-			return CompilerOptions.VERSION_1_3;
-		case "1.4": //$NON-NLS-1$
-			return CompilerOptions.VERSION_1_4;
-		case "1.5": //$NON-NLS-1$
-		case "5": //$NON-NLS-1$
-		case "5.0": //$NON-NLS-1$
-			return CompilerOptions.VERSION_1_5;
-		case "1.6": //$NON-NLS-1$
-		case "6": //$NON-NLS-1$
-		case "6.0": //$NON-NLS-1$
-			return CompilerOptions.VERSION_1_6;
-		case "1.7": //$NON-NLS-1$
-		case "7": //$NON-NLS-1$
-		case "7.0": //$NON-NLS-1$
-			return CompilerOptions.VERSION_1_7;
-		case "1.8": //$NON-NLS-1$
-		case "8": //$NON-NLS-1$
-		case "8.0": //$NON-NLS-1$
-			return CompilerOptions.VERSION_1_8;
-		case "1.9": //$NON-NLS-1$
-		case "9": //$NON-NLS-1$
-		case "9.0": //$NON-NLS-1$
-			return CompilerOptions.VERSION_9;
-		case "10": //$NON-NLS-1$
-		case "10.0": //$NON-NLS-1$
-			return CompilerOptions.VERSION_10;
-		case "11": //$NON-NLS-1$
-		case "11.0": //$NON-NLS-1$
-			return CompilerOptions.VERSION_11;
-		case "12": //$NON-NLS-1$
-		case "12.0": //$NON-NLS-1$
-			return CompilerOptions.VERSION_12;
-		case "13": //$NON-NLS-1$
-		case "13.0": //$NON-NLS-1$
-			return CompilerOptions.VERSION_13;
-		case "14": //$NON-NLS-1$
-		case "14.0": //$NON-NLS-1$
-			return CompilerOptions.VERSION_14;
-		case "15": //$NON-NLS-1$
-		case "15.0": //$NON-NLS-1$
-			return CompilerOptions.VERSION_15;
-		case "16": //$NON-NLS-1$
-		case "16.0": //$NON-NLS-1$
-			return CompilerOptions.VERSION_16;
-		case "17": //$NON-NLS-1$
-		case "17.0": //$NON-NLS-1$
-			return CompilerOptions.VERSION_17;
-		case "18": //$NON-NLS-1$
-		case "18.0": //$NON-NLS-1$
-			return CompilerOptions.VERSION_18;
-		case "19": //$NON-NLS-1$
-		case "19.0": //$NON-NLS-1$
-			return CompilerOptions.VERSION_19;
-		case "20": //$NON-NLS-1$
-		case "20.0": //$NON-NLS-1$
-			return CompilerOptions.VERSION_20;
-		case "21": //$NON-NLS-1$
-		case "21.0": //$NON-NLS-1$
-			return CompilerOptions.VERSION_21;
-		default:
 			return null;
 		}
 	}

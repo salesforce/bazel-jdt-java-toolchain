@@ -82,7 +82,7 @@ jobs:
         bazelisk test --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
       
     - name: Test Compile & Test with javac
-      if: matrix.compiler == 'java'
+      if: matrix.compiler == 'javac'
       run: |
         cd examples/
         echo "using --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }}"

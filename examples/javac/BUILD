@@ -17,7 +17,7 @@ RELEASES = (11, 17, 21)
             "-Xlint:all",  # turn on warning, which should give us an indicator javac is used,
         ],
         source_version = "%s" % release,
-        target_version = "11", # ensure we produce class files for 11 only (so we can test with multiple execution environments)
+        target_version = "%s" % release,
     )
     for release in RELEASES
 ]

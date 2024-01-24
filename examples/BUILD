@@ -38,7 +38,6 @@ RELEASES = (11, 17, 21)
             "-warn:all",  # turn on warning, which should give us an indicator JDT is used,
         ],
         release = release,
-        target_version = "11", # ensure we produce class files for 11 only (so we can test with multiple execution environments)
     )
     for release in RELEASES
 ]

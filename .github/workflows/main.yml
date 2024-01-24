@@ -63,14 +63,19 @@ jobs:
         bazelisk build :JdtJavaBuilder_deploy.jar
         cp -fv bazel-bin/JdtJavaBuilder_deploy.jar compiler/export/
 
+    - name: Prepare Test Compile
+      run: |
+        cd examples/
+        echo "JAVA_HOME=$JAVA_HOME"
+        java --version
+        bazelisk info
+        bazelisk clean
+
     - name: Test Compile & Test with ECJ
       if: matrix.compiler == 'ecj'
       run: |
         cd examples/
         echo "using --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }}"
-        echo "JAVA_HOME=$JAVA_HOME"
-        java --version
-        bazelisk info
         bazelisk build --config=${{ matrix.compiler }} --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
         bazelisk test --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
       
@@ -79,9 +84,6 @@ jobs:
       run: |
         cd examples/
         echo "using --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }}"
-        echo "JAVA_HOME=$JAVA_HOME"
-        java --version
-        bazelisk info
         bazelisk build --config=${{ matrix.compiler }} --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
         bazelisk test --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
       
@@ -90,9 +92,6 @@ jobs:
       run: |
         cd examples/
         echo "using --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }}"
-        echo "JAVA_HOME=$JAVA_HOME"
-        java --version
-        bazelisk info
         bazelisk build --config=${{ matrix.compiler }} --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
         bazelisk test --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_runtime_version }}  --java_language_version=${{ matrix.java_language_version }} //...
         
@@ -101,4 +100,8 @@ jobs:
       run: |
         cd  examples
         find -L ./bazel-testlogs  -type f -name test.log -exec cat {} \;
-        
+
+    - name: Clear Test Output
+      run: |
+        cd examples/
+        bazelisk clean

@@ -2,11 +2,7 @@
 
 We are using a patched version of ECJ 4.30 to incorporate fixes for:
 
-```
-* Bugzilla [533199](https://bugs.eclipse.org/bugs/show_bug.cgi?id=533199)
-  - Reverting part of commit [Bug 552082 - Fix the applicability of a no-@target annotation type](https://github.com/eclipse-jdt/eclipse.jdt.core/commit/c07bc1c3061d9d8cee7ea123d74e67f097c7ad56)
-  - [JDK specification discussion](https://mail.openjdk.org/pipermail/compiler-dev/2019-September/013705.html)
-```
+* None at this time
 
 As well as additional modification to support:
 

@@ -7,7 +7,7 @@ package(
 )
 
 # the upcoming release to publish
-_version = "0.1.12"
+_version = "1.0.0"
 
 # the last public release on GitHub
 _previous_release_tag = "0.1.11"

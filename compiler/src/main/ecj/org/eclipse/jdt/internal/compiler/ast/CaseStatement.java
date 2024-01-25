@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2021 IBM Corporation and others.
+ * Copyright (c) 2000, 2023 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -22,9 +22,11 @@ import org.eclipse.jdt.internal.compiler.codegen.BranchLabel;
 import org.eclipse.jdt.internal.compiler.codegen.CodeStream;
 import org.eclipse.jdt.internal.compiler.flow.FlowContext;
 import org.eclipse.jdt.internal.compiler.flow.FlowInfo;
+import org.eclipse.jdt.internal.compiler.impl.CompilerOptions;
 import org.eclipse.jdt.internal.compiler.impl.Constant;
 import org.eclipse.jdt.internal.compiler.impl.IntConstant;
 import org.eclipse.jdt.internal.compiler.impl.JavaFeature;
+import org.eclipse.jdt.internal.compiler.impl.StringConstant;
 import org.eclipse.jdt.internal.compiler.lookup.Binding;
 import org.eclipse.jdt.internal.compiler.lookup.BlockScope;
 import org.eclipse.jdt.internal.compiler.lookup.ExtraCompilerModifiers;
@@ -81,7 +83,7 @@ public FlowInfo analyseCode(
 				if (!(i == nullPatternCount && e instanceof TypePattern))
 					currentScope.problemReporter().IllegalFallThroughToPattern(e);
 			}
-			analyseConstantExpression(currentScope, flowContext, flowInfo, e);
+			flowInfo = analyseConstantExpression(currentScope, flowContext, flowInfo, e);
 			if (nullPatternCount > 0 && e instanceof TypePattern) {
 				LocalVariableBinding binding = ((TypePattern) e).local.binding;
 				if (binding != null)
@@ -91,7 +93,7 @@ public FlowInfo analyseCode(
 	}
 	return flowInfo;
 }
-private void analyseConstantExpression(
+private FlowInfo analyseConstantExpression(
 		BlockScope currentScope,
 		FlowContext flowContext,
 		FlowInfo flowInfo,
@@ -110,12 +112,24 @@ private void analyseConstantExpression(
 			}
 		}
 	}
-	e.analyseCode(currentScope, flowContext, flowInfo);
+	return e.analyseCode(currentScope, flowContext, flowInfo);
 }
 
 @Override
 public boolean containsPatternVariable() {
-	return this.patternIndex != -1;
+	if (this.patternIndex == -1
+			|| this.constantExpressions.length <= this.patternIndex
+			|| !(this.constantExpressions[this.patternIndex] instanceof Pattern)) {
+		return false;
+	}
+	for (int i = 0, l = this.constantExpressions.length; i < l; ++i) {
+		if (this.constantExpressions[i] instanceof Pattern) {
+			Pattern pattern = (Pattern) this.constantExpressions[i];
+			if (pattern.containsPatternVariable())
+				return true;
+		}
+	}
+	return false;
 }
 @Override
 public StringBuffer printStatement(int tab, StringBuffer output) {
@@ -136,7 +150,6 @@ public StringBuffer printStatement(int tab, StringBuffer output) {
 
 /**
  * Case code generation
- *
  */
 @Override
 public void generateCode(BlockScope currentScope, CodeStream codeStream) {
@@ -157,10 +170,17 @@ public void generateCode(BlockScope currentScope, CodeStream codeStream) {
 
 private void casePatternExpressionGenerateCode(BlockScope currentScope, CodeStream codeStream) {
 	if (this.patternIndex != -1) {
-		LocalVariableBinding local = currentScope.findVariable(SwitchStatement.SecretPatternVariableName, null);
-		codeStream.load(local);
-		Pattern patternExpression = ((Pattern) this.constantExpressions[this.patternIndex]);
-		patternExpression.generateCode(currentScope, codeStream);
+		Pattern pattern = ((Pattern) this.constantExpressions[this.patternIndex]);
+		if (containsPatternVariable()) {
+			LocalVariableBinding local = currentScope.findVariable(SwitchStatement.SecretPatternVariableName, null);
+			codeStream.load(local);
+			pattern.generateCode(currentScope, codeStream);
+		} else {
+			pattern.setTargets(codeStream);
+		}
+
+		if (!(pattern instanceof GuardedPattern))
+			codeStream.goto_(pattern.thenTarget);
 	}
 }
 
@@ -176,24 +196,33 @@ public static class ResolvedCase {
 	public Constant c;
 	public Expression e;
 	public TypeBinding t; // For ease of access. This.e contains the type binding anyway.
+	public int index;
 	private int intValue;
-	private boolean isPattern;
-	ResolvedCase(Constant c, Expression e, TypeBinding t) {
+	private final boolean isPattern;
+	private final boolean isQualifiedEnum;
+	public int enumDescIdx;
+	public int classDescIdx;
+	ResolvedCase(Constant c, Expression e, TypeBinding t, int index, boolean isQualifiedEnum) {
 		this.c = c;
 		this.e = e;
 		this.t= t;
+		this.index = index;
 		if (c.typeID() == TypeIds.T_JavaLangString) {
-			c.stringValue().hashCode();
+			this.intValue = c.stringValue().hashCode();
 		} else {
 			this.intValue = c.intValue();
 		}
 		this.isPattern = e instanceof Pattern;
+		this.isQualifiedEnum = isQualifiedEnum;
 	}
 	public int intValue() {
 		return this.intValue;
 	}
 	public boolean isPattern() {
 		return this.isPattern;
+	}
+	public boolean isQualifiedEnum() {
+		return this.isQualifiedEnum;
 	}
 	@Override
 	public String toString() {
@@ -235,58 +264,42 @@ public ResolvedCase[] resolveWithPatternVariablesInScope(LocalVariableBinding[] 
 private Expression getFirstValidExpression(BlockScope scope, SwitchStatement switchStatement) {
 	assert this.constantExpressions != null;
 	Expression ret = null;
-	int patternCaseLabelCount = 0;
-	int typePatternCount = 0;
-	int defaultCaseLabelCount = 0;
 	int nullCaseLabelCount = 0;
 
 	boolean patternSwitchAllowed = JavaFeature.PATTERN_MATCHING_IN_SWITCH.isSupported(scope.compilerOptions());
 	if (patternSwitchAllowed) {
+		int exprCount = 0;
 		for (Expression e : this.constantExpressions) {
+			++exprCount;
 			 if (e instanceof FakeDefaultLiteral) {
 				 scope.problemReporter().validateJavaFeatureSupport(JavaFeature.PATTERN_MATCHING_IN_SWITCH,
 							e.sourceStart, e.sourceEnd);
 				 flagDuplicateDefault(scope, switchStatement,
 						 this.constantExpressions.length > 1 ? e : this);
-				 if (patternCaseLabelCount > 0) {
-					 scope.problemReporter().switchPatternBothPatternAndDefaultCaseLabelsNotAllowed(e);
+				 if (exprCount != 2 || nullCaseLabelCount < 1) {
+					 scope.problemReporter().patternSwitchCaseDefaultOnlyAsSecond(e);
 				 }
-				 ++defaultCaseLabelCount;
 				 continue;
 			}
 			if (e instanceof Pattern) {
 				scope.problemReporter().validateJavaFeatureSupport(JavaFeature.PATTERN_MATCHING_IN_SWITCH,
 						e.sourceStart, e.sourceEnd);
-				if (patternCaseLabelCount++ > 0) {
-					scope.problemReporter().switchPatternOnlyOnePatternCaseLabelAllowed(e);
-					return e; // Return and avoid secondary errors
-				} else if (defaultCaseLabelCount > 0) {
-					scope.problemReporter().switchPatternBothPatternAndDefaultCaseLabelsNotAllowed(e);
-					return e; // Return and avoid secondary errors
-				}
-				if (e instanceof TypePattern) {
-					++typePatternCount;
-				} else if (nullCaseLabelCount > 0 ) {
-					scope.problemReporter().switchPatternBothNullAndNonTypePatternNotAllowed(e);
-					return e; // Return and avoid secondary errors
+				if (this.constantExpressions.length > 1) {
+					scope.problemReporter().illegalCaseConstantCombination(e);
+					return e;
 				}
 			} else if (e instanceof NullLiteral) {
 				scope.problemReporter().validateJavaFeatureSupport(JavaFeature.PATTERN_MATCHING_IN_SWITCH,
 						e.sourceStart, e.sourceEnd);
 				if (switchStatement.nullCase == null) {
 					switchStatement.nullCase = this;
-					if ((switchStatement.switchBits & SwitchStatement.TotalPattern) != 0) {
-						scope.problemReporter().patternDominatedByAnother(this.constantExpressions[0]);
-						return e; // Return and avoid secondary errors
-					}
 				}
 
-				if (nullCaseLabelCount++ > 0) {
-					// TODO: Decide whether we need to have a more fine-grain element level error flagging for null specifically
-//					continue;
-				}
-				if ((patternCaseLabelCount - typePatternCount) > 0) {
-					scope.problemReporter().switchPatternBothNullAndNonTypePatternNotAllowed(e);
+				nullCaseLabelCount++;
+				// note: case null or case null, default are the only constructs allowed with null
+				//  second condition added since duplicate case label will anyway be flagged
+				if (exprCount > 1 && nullCaseLabelCount < 2) {
+					scope.problemReporter().patternSwitchNullOnlyOrFirstWithDefault(e);
 					return e; // Return and avoid secondary errors
 				}
 			}
@@ -342,9 +355,11 @@ private ResolvedCase[] resolveCasePrivate(BlockScope scope, TypeBinding switchEx
 			return ResolvedCase.UnresolvedCase;
 		 // Avoid further resolution and secondary errors
 		if (caseType.isValidBinding()) {
-			Constant con = resolveConstantExpression(scope, caseType, switchExpressionType, switchStatement, e);
+			Constant con = resolveConstantExpression(scope, caseType, switchExpressionType, switchStatement, e, cases);
 			if (con != Constant.NotAConstant) {
-				cases.add(new ResolvedCase(con, e, caseType));
+				int index = this == switchStatement.nullCase && e instanceof NullLiteral ?
+						-1 : switchStatement.constantIndex++;
+				cases.add(new ResolvedCase(con, e, caseType, index, false));
 			}
 		}
 	}
@@ -381,9 +396,11 @@ public Constant resolveConstantExpression(BlockScope scope,
 											TypeBinding caseType,
 											TypeBinding switchType,
 											SwitchStatement switchStatement,
-											Expression expression) {
+											Expression expression,
+											List<ResolvedCase> cases) {
 
-	boolean patternSwitchAllowed = JavaFeature.PATTERN_MATCHING_IN_SWITCH.isSupported(scope.compilerOptions());
+	CompilerOptions options = scope.compilerOptions();
+	boolean patternSwitchAllowed = JavaFeature.PATTERN_MATCHING_IN_SWITCH.isSupported(options);
 	if (patternSwitchAllowed) {
 		if (expression instanceof Pattern) {
 			return resolveConstantExpression(scope, caseType, switchType,
@@ -423,7 +440,14 @@ public Constant resolveConstantExpression(BlockScope scope,
 				if ((field.modifiers & ClassFileConstants.AccEnum) == 0) {
 					 scope.problemReporter().enumSwitchCannotTargetField(reference, field);
 				} else 	if (reference instanceof QualifiedNameReference) {
-					 scope.problemReporter().cannotUseQualifiedEnumConstantInCaseLabel(reference, field);
+					if (options.complianceLevel < ClassFileConstants.JDK21) {
+						scope.problemReporter().cannotUseQualifiedEnumConstantInCaseLabel(reference, field);
+					} else if (!TypeBinding.equalsEquals(caseType, switchType)) {
+						switchStatement.switchBits |= SwitchStatement.QualifiedEnum;
+						StringConstant constant = (StringConstant) StringConstant.fromValue(new String(field.name));
+						cases.add(new ResolvedCase(constant, expression, caseType, -1, true));
+						return Constant.NotAConstant;
+					}
 				}
 				return IntConstant.fromValue(field.original().id + 1); // (ordinal value + 1) zero should not be returned see bug 141810
 			}
@@ -446,7 +470,7 @@ private Constant resolveConstantExpression(BlockScope scope,
 	Constant constant = Constant.NotAConstant;
 	TypeBinding type = e.resolveType(scope);
 	if (type != null) {
-		constant = IntConstant.fromValue(switchStatement.caseLabelElements.size());
+		constant = IntConstant.fromValue(switchStatement.constantIndex);
 		switchStatement.caseLabelElements.add(e);
 		if (e.resolvedType != null) {
 			// 14.30.2 at compile-time we "resolve" the pattern with respect to the (compile-time) type
@@ -454,39 +478,39 @@ private Constant resolveConstantExpression(BlockScope scope,
 			TypeBinding pb = e.resolveAtType(scope, switchStatement.expression.resolvedType);
 			if (pb != null) switchStatement.caseLabelElementTypes.add(pb);
 			TypeBinding expressionType = switchStatement.expression.resolvedType;
-			LocalDeclaration patternVar = e.getPatternVariableIntroduced();
-			if (patternVar != null && !patternVar.type.isTypeNameVar(scope)) {
-				// The following code is copied from InstanceOfExpression#resolve()
-				// But there are enough differences to warrant a copy
-				if (!pb.isReifiable()) {
-					if (expressionType != TypeBinding.NULL) {
-						boolean isLegal = e.checkCastTypesCompatibility(scope, pb, expressionType, e, false);
-						if (!isLegal || (e.bits & ASTNode.UnsafeCast) != 0) {
-							scope.problemReporter().unsafeCastInInstanceof(e, pb, expressionType);
-						}
-					}
-				} else if (pb.isValidBinding()) {
-					// if not a valid binding, an error has already been reported for unresolved type
-					if (pb.isPrimitiveType()) {
-						scope.problemReporter().unexpectedTypeinSwitchPattern(pb, e);
-						return Constant.NotAConstant;
-					}
-					if (pb.isBaseType()
-							|| !e.checkCastTypesCompatibility(scope, pb, expressionType, null, false)) {
-						scope.problemReporter().typeMismatchError(expressionType, pb, e, null);
-						return Constant.NotAConstant;
+			// The following code is copied from InstanceOfExpression#resolve()
+			// But there are enough differences to warrant a copy
+			if (!pb.isReifiable()) {
+				if (expressionType != TypeBinding.NULL && !(e instanceof RecordPattern)) {
+					boolean isLegal = e.checkCastTypesCompatibility(scope, pb, expressionType, e, false);
+					if (!isLegal || (e.bits & ASTNode.UnsafeCast) != 0) {
+						scope.problemReporter().unsafeCastInInstanceof(e, pb, expressionType);
 					}
 				}
+			} else if (pb.isValidBinding()) {
+				// if not a valid binding, an error has already been reported for unresolved type
+				if (pb.isPrimitiveType()) {
+					scope.problemReporter().unexpectedTypeinSwitchPattern(pb, e);
+					return Constant.NotAConstant;
+				}
+				if (pb.isBaseType()
+						|| !e.checkCastTypesCompatibility(scope, pb, expressionType, null, false)) {
+					scope.problemReporter().typeMismatchError(expressionType, pb, e, null);
+					return Constant.NotAConstant;
+				}
 			}
-			if (e.isTotalForType(expressionType)) {
+			if (e.coversType(expressionType)) {
 				if ((switchStatement.switchBits & SwitchStatement.TotalPattern) != 0) {
 					scope.problemReporter().duplicateTotalPattern(e);
 					return IntConstant.fromValue(-1);
 				}
-				switchStatement.switchBits |= (SwitchStatement.TotalPattern | SwitchStatement.Exhaustive);
-				if (switchStatement.defaultCase != null)
-					scope.problemReporter().illegalTotalPatternWithDefault(this);
-				switchStatement.totalPattern = e;
+				switchStatement.switchBits |= SwitchStatement.Exhaustive;
+				if (e.isAlwaysTrue()) {
+					switchStatement.switchBits |= SwitchStatement.TotalPattern;
+					if (switchStatement.defaultCase != null && !(e instanceof RecordPattern))
+						scope.problemReporter().illegalTotalPatternWithDefault(this);
+					switchStatement.totalPattern = e;
+				}
 				e.isTotalTypeNode = true;
 				if (switchStatement.nullCase == null)
 					constant = IntConstant.fromValue(-1);
@@ -503,7 +527,7 @@ private Constant resolveConstantExpression(BlockScope scope,
 			e.traverse(new ASTVisitor() {
 				@Override
 				public boolean visit(TypePattern typePattern, BlockScope scope) {
-					LocalDeclaration local = typePattern.getPatternVariableIntroduced();
+					LocalDeclaration local = typePattern.getPatternVariable();
 					if (local != null && local.binding != null)
 						codeStream.removeVariable(local.binding);
 					return false; // No deeper than this on this node
@@ -531,7 +555,7 @@ public void traverse(ASTVisitor visitor, 	BlockScope blockScope) {
  */
 public LocalDeclaration getLocalDeclaration() {
 	Expression cexp = this.constantExpressions[this.patternIndex];
-	LocalDeclaration patternVariableIntroduced = cexp.getPatternVariableIntroduced();
+	LocalDeclaration patternVariableIntroduced = cexp.getPatternVariable();
 	return patternVariableIntroduced;
 }
 

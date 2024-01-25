@@ -18,6 +18,20 @@ load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
 bazel_skylib_workspace()
 
 # --------------------------------------------------------------------------
+# Rules Java (needed to obtain remotejdk_21 for compilation of ECJ)
+http_archive(
+    name = "rules_java",
+    urls = [
+        "https://github.com/bazelbuild/rules_java/releases/download/7.3.2/rules_java-7.3.2.tar.gz",
+    ],
+    sha256 = "3121a00588b1581bd7c1f9b550599629e5adcc11ba9c65f482bbd5cfe47fdf30",
+)
+load("@rules_java//java:repositories.bzl", "rules_java_dependencies", "rules_java_toolchains")
+rules_java_dependencies()
+rules_java_toolchains()
+
+
+# --------------------------------------------------------------------------
 # rules_proto defines abstract rules for building Protocol Buffers.
 http_archive(
     name = "rules_proto",

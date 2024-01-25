@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2020 IBM Corporation and others.
+ * Copyright (c) 2000, 2023 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -136,6 +136,8 @@ public static final TypeBinding wellKnownType(Scope scope, int id) {
 		return scope.getJavaLangObject();
 	case TypeIds.T_JavaLangString:
 		return scope.getJavaLangString();
+	case TypeIds.T_JavaLangThrowable:
+		return scope.getJavaLangThrowable();
 	default:
 		return null;
 	}
@@ -233,7 +235,6 @@ public TypeBinding closestMatch() {
 
 /**
  * Iterate through the type components to collect instances of leaf missing types
- * @param missingTypes
  * @return missing types
  */
 public List<TypeBinding> collectMissingTypes(List<TypeBinding> missingTypes) {
@@ -304,7 +305,7 @@ public TypeBinding erasure() {
  * Perform an upwards type projection as per JLS 4.10.5
  * @param scope Relevant scope for evaluating type projection
  * @param mentionedTypeVariables Filter for mentioned type variabled
- * @returns Upwards type projection of 'this', or null if downwards projection is undefined
+ * @return Upwards type projection of 'this', or null if downwards projection is undefined
 */
 public TypeBinding upwardsProjection(Scope scope, TypeBinding[] mentionedTypeVariables) {
 	return this;
@@ -314,7 +315,7 @@ public TypeBinding upwardsProjection(Scope scope, TypeBinding[] mentionedTypeVar
  * Perform a downwards type projection as per JLS 4.10.5
  * @param scope Relevant scope for evaluating type projection
  * @param mentionedTypeVariables Filter for mentioned type variabled
- * @returns Downwards type projection of 'this', or null if downwards projection is undefined
+ * @return Downwards type projection of 'this', or null if downwards projection is undefined
 */
 public TypeBinding downwardsProjection(Scope scope, TypeBinding[] mentionedTypeVariables) {
 	return this;
@@ -1173,6 +1174,9 @@ private boolean isProvablyDistinctTypeArgument(TypeBinding otherArgument, final 
 	}
 }
 
+public boolean isReadyForAnnotations() {
+	return true;
+}
 /**
  * Answer true if the receiver is an annotation which may be repeatable. Overridden as appropriate.
  */
@@ -1733,7 +1737,9 @@ public ReferenceBinding[] permittedTypes() {
 public ReferenceBinding[] superInterfaces() {
 	return Binding.NO_SUPERINTERFACES;
 }
-
+public RecordComponentBinding[] components() {
+	return Binding.NO_COMPONENTS;
+}
 public SyntheticArgumentBinding[] syntheticOuterLocalVariables() {
 	return null;		// is null if no enclosing instances are required
 }
@@ -1765,4 +1771,12 @@ public long updateTagBits() {
 public boolean isFreeTypeVariable() {
 	return false;
 }
+
+/**
+ * Does this type lack a class file representation on its own ?
+ */
+public boolean isNonDenotable() {
+	return false;
+}
+
 }

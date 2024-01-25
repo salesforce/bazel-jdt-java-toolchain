@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2016, 2018 IBM Corporation.
+ * Copyright (c) 2016, 2023 IBM Corporation.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -26,6 +26,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.zip.ZipFile;
 
@@ -40,15 +41,15 @@ import org.eclipse.jdt.internal.compiler.env.IModule;
 import org.eclipse.jdt.internal.compiler.env.IModule.IPackageExport;
 import org.eclipse.jdt.internal.compiler.env.IMultiModuleEntry;
 import org.eclipse.jdt.internal.compiler.lookup.BinaryTypeBinding.ExternalAnnotationStatus;
+import org.eclipse.jdt.internal.compiler.util.CtSym;
 import org.eclipse.jdt.internal.compiler.util.JRTUtil;
-import org.eclipse.jdt.internal.compiler.util.SuffixConstants;
 
 @SuppressWarnings({"rawtypes", "unchecked"})
 public class ClasspathJrt extends ClasspathLocation implements IMultiModuleEntry {
 	public File file;
 	protected ZipFile annotationZipFile;
 	protected boolean closeZipFileAtEnd;
-	protected static HashMap<String, Map<String,IModule>> ModulesCache = new HashMap<>();
+	protected static Map<String, Map<String,IModule>> ModulesCache = new ConcurrentHashMap<>();
 	public final Set<String> moduleNamesCache;
 	//private Set<String> packageCache;
 	protected List<String> annotationPaths;
@@ -87,26 +88,7 @@ public class ClasspathJrt extends ClasspathLocation implements IMultiModuleEntry
 			IBinaryType reader = ClassFileReader.readFromModule(this.file, moduleName, qualifiedBinaryFileName, this.moduleNamesCache::contains);
 
 			if (reader != null) {
-				searchPaths:
-				if (this.annotationPaths != null) {
-					String qualifiedClassName = qualifiedBinaryFileName.substring(0, qualifiedBinaryFileName.length()-SuffixConstants.EXTENSION_CLASS.length()-1);
-					for (String annotationPath : this.annotationPaths) {
-						try {
-							if (this.annotationZipFile == null) {
-								this.annotationZipFile = ExternalAnnotationDecorator.getAnnotationZipFile(annotationPath, null);
-							}
-							reader = ExternalAnnotationDecorator.create(reader, annotationPath, qualifiedClassName, this.annotationZipFile);
-
-							if (reader.getExternalAnnotationStatus() == ExternalAnnotationStatus.TYPE_IS_ANNOTATED) {
-								break searchPaths;
-							}
-						} catch (IOException e) {
-							// don't let error on annotations fail class reading
-						}
-					}
-					// location is configured for external annotations, but no .eea found, decorate in order to answer NO_EEA_FILE:
-					reader = new ExternalAnnotationDecorator(reader, null);
-				}
+				reader = maybeDecorateForExternalAnnotations(qualifiedBinaryFileName, reader);
 				char[] answerModuleName = reader.getModule();
 				if (answerModuleName == null && moduleName != null)
 					answerModuleName = moduleName.toCharArray();
@@ -116,6 +98,31 @@ public class ClasspathJrt extends ClasspathLocation implements IMultiModuleEntry
 			// treat as if class file is missing
 		}
 		return null;
+	}
+
+	protected IBinaryType maybeDecorateForExternalAnnotations(String qualifiedBinaryFileName, IBinaryType reader) {
+		searchPaths:
+		if (this.annotationPaths != null) {
+			int extensionPos = qualifiedBinaryFileName.lastIndexOf('.'); // extension could be .class or .sig
+			String qualifiedClassName = qualifiedBinaryFileName.substring(0, extensionPos);
+			for (String annotationPath : this.annotationPaths) {
+				try {
+					if (this.annotationZipFile == null) {
+						this.annotationZipFile = ExternalAnnotationDecorator.getAnnotationZipFile(annotationPath, null);
+					}
+					reader = ExternalAnnotationDecorator.create(reader, annotationPath, qualifiedClassName, this.annotationZipFile);
+
+					if (reader.getExternalAnnotationStatus() == ExternalAnnotationStatus.TYPE_IS_ANNOTATED) {
+						break searchPaths;
+					}
+				} catch (IOException e) {
+					// don't let error on annotations fail class reading
+				}
+			}
+			// location is configured for external annotations, but no .eea found, decorate in order to answer NO_EEA_FILE:
+			reader = new ExternalAnnotationDecorator(reader, null);
+		}
+		return reader;
 	}
 	@Override
 	public boolean hasAnnotationFileFor(String qualifiedTypeName) {
@@ -165,7 +172,14 @@ public class ClasspathJrt extends ClasspathLocation implements IMultiModuleEntry
 
 			}, JRTUtil.NOTIFY_ALL);
 		} catch (IOException e) {
-			// Ignore and move on
+			String error = "Failed to find module " + moduleName + " defining package " + qualifiedPackageName //$NON-NLS-1$ //$NON-NLS-2$
+					+ " in " + this; //$NON-NLS-1$
+			if (JRTUtil.PROPAGATE_IO_ERRORS) {
+				throw new IllegalStateException(error, e);
+			} else {
+				System.err.println(error);
+				e.printStackTrace();
+			}
 		}
 
 		int size = answers.size();
@@ -191,17 +205,11 @@ public class ClasspathJrt extends ClasspathLocation implements IMultiModuleEntry
 	public void initialize() throws IOException {
 		loadModules();
 	}
-//	public void acceptModule(IModuleDeclaration mod) {
-//		if (this.isJrt)
-//			return;
-//		this.module = mod;
-//	}
-	public void loadModules() {
-		Map<String,IModule> cache = ModulesCache.get(this.file.getPath());
 
-		if (cache == null) {
+	public void loadModules() {
+		Map<String, IModule> cache = ModulesCache.computeIfAbsent(this.file.getPath(), key -> {
+			HashMap<String,IModule> newCache = new HashMap<>();
 			try {
-				HashMap<String,IModule> newCache = new HashMap<>();
 				org.eclipse.jdt.internal.compiler.util.JRTUtil.walkModuleImage(this.file,
 						new org.eclipse.jdt.internal.compiler.util.JRTUtil.JrtFileVisitor<Path>() {
 
@@ -219,44 +227,36 @@ public class ClasspathJrt extends ClasspathLocation implements IMultiModuleEntry
 
 					@Override
 					public FileVisitResult visitModule(Path p, String name) throws IOException {
-						ClasspathJrt.this.acceptModule(JRTUtil.getClassfileContent(ClasspathJrt.this.file, IModule.MODULE_INFO_CLASS, name), newCache);
-						ClasspathJrt.this.moduleNamesCache.add(name);
+						try {
+							ClasspathJrt.this.acceptModule(JRTUtil.getClassfile(ClasspathJrt.this.file, IModule.MODULE_INFO_CLASS, name), newCache);
+						} catch (ClassFormatException e) {
+							throw new IOException(e);
+						}
 						return FileVisitResult.SKIP_SUBTREE;
 					}
 				}, JRTUtil.NOTIFY_MODULES);
 
-				synchronized(ModulesCache) {
-					if (ModulesCache.get(this.file.getPath()) == null) {
-						ModulesCache.put(this.file.getPath(), Collections.unmodifiableMap(newCache));
-					}
-				}
 			} catch (IOException e) {
-				// TODO: Java 9 Should report better
+				String error = "Failed to walk modules for " + key; //$NON-NLS-1$
+				if (JRTUtil.PROPAGATE_IO_ERRORS) {
+					throw new IllegalStateException(error, e);
+				} else {
+					System.err.println(error);
+					e.printStackTrace();
+					return null;
+				}
 			}
-		} else {
-			this.moduleNamesCache.addAll(cache.keySet());
-		}
+			return newCache.isEmpty() ? null : Collections.unmodifiableMap(newCache);
+		});
+		this.moduleNamesCache.addAll(cache.keySet());
 	}
+
 	void acceptModule(ClassFileReader reader, Map<String, IModule> cache) {
 		if (reader != null) {
 			IModule moduleDecl = reader.getModuleDeclaration();
 			if (moduleDecl != null) {
 				cache.put(String.valueOf(moduleDecl.name()), moduleDecl);
 			}
-		}
-	}
-
-	void acceptModule(byte[] content, Map<String, IModule> cache) {
-		if (content == null)
-			return;
-		ClassFileReader reader = null;
-		try {
-			reader = new ClassFileReader(content, IModule.MODULE_INFO_CLASS.toCharArray());
-		} catch (ClassFormatException e) {
-			e.printStackTrace();
-		}
-		if (reader != null) {
-			acceptModule(reader, cache);
 		}
 	}
 
@@ -405,5 +405,12 @@ public class ClasspathJrt extends ClasspathLocation implements IMultiModuleEntry
 	@Override
 	public boolean servesModule(char[] moduleName) {
 		return getModule(moduleName) != null;
+	}
+
+	public static void clearCache(String path, String releaseVersion) {
+		if (releaseVersion != null) {
+			path += '|'+ CtSym.getReleaseCode(releaseVersion);
+		}
+		ModulesCache.remove(path);
 	}
 }

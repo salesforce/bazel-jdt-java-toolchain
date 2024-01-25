@@ -1,0 +1,9 @@
+-d
+bin
+-s
+src-gen
+-verbose
+--release
+8
+-proc:none
+src/allow.java

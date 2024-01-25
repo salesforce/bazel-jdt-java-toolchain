@@ -1,0 +1,16 @@
+load("@contrib_rules_jvm//java:defs.bzl", "java_junit5_test")
+load("@rules_jvm_external//:defs.bzl", "artifact")
+
+java_junit5_test(
+    name = "ExampleTest",
+    srcs = ["ExampleTest.java"],
+    test_class = "example.test.ExampleTest",
+    runtime_deps = [
+        artifact("org.junit.jupiter:junit-jupiter-engine"),
+    ],
+    deps = [
+        artifact("org.junit.jupiter:junit-jupiter-api"),
+        artifact("org.junit.platform:junit-platform-launcher"),
+        artifact("org.junit.platform:junit-platform-reporting"),
+    ],
+)

@@ -34,6 +34,7 @@ import org.eclipse.jdt.internal.compiler.env.IModule;
 import org.eclipse.jdt.internal.compiler.env.PackageExportImpl;
 import org.eclipse.jdt.internal.compiler.env.IModule.IPackageExport;
 import org.eclipse.jdt.internal.compiler.parser.Parser;
+import org.eclipse.jdt.internal.compiler.util.JRTUtil;
 import org.eclipse.jdt.internal.compiler.util.Util;
 
 public class ModuleFinder {
@@ -130,6 +131,13 @@ public class ModuleFinder {
 		try (JarFile jar = new JarFile(file)) {
 			return jar.getManifest();
 		} catch (IOException e) {
+			String error = "Failed to read manifest from " + file; //$NON-NLS-1$
+			if (JRTUtil.PROPAGATE_IO_ERRORS) {
+				throw new IllegalStateException(error, e);
+			} else {
+				System.err.println(error);
+				e.printStackTrace();
+			}
 			return null;
 		}
 	}
@@ -146,7 +154,6 @@ public class ModuleFinder {
 	 * element, first being the source module and second being the target module.
 	 * The expected format is:
 	 *  --add-reads <source-module>=<target-module>
-	 * @param option
 	 * @return a String[] with source and target module of the "reads" clause.
 	 */
 	protected static String[] extractAddonRead(String option) {
@@ -249,8 +256,16 @@ public class ModuleFinder {
 				return reader.getModuleDeclaration();
 			}
 			return null;
-		} catch (ClassFormatException | IOException e) {
+		} catch (ClassFormatException e) {
 			// Nothing to be done here
+		} catch (IOException e) {
+			String error = "Failed to read module for path " + path + " and release " + release + " from " + file; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
+			if (JRTUtil.PROPAGATE_IO_ERRORS) {
+				throw new IllegalStateException(error, e);
+			} else {
+				System.err.println(error);
+				e.printStackTrace();
+			}
 		} finally {
 			if (zipFile != null) {
 				try {
@@ -271,8 +286,16 @@ public class ModuleFinder {
 				return reader.getModuleDeclaration();
 			}
 			return null;
-		} catch (ClassFormatException | IOException e) {
+		} catch (ClassFormatException e) {
 			e.printStackTrace();
+		} catch (IOException e) {
+			String error = "Failed to read module from " + classfilePath; //$NON-NLS-1$
+			if (JRTUtil.PROPAGATE_IO_ERRORS) {
+				throw new IllegalStateException(error, e);
+			} else {
+				System.err.println(error);
+				e.printStackTrace();
+			}
 		}
 		return null;
 	}

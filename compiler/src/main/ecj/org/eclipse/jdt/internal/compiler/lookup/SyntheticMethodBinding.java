@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2021 IBM Corporation and others.
+ * Copyright (c) 2000, 2023 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -390,6 +390,9 @@ public class SyntheticMethodBinding extends MethodBinding {
 		this.tagBits |= (TagBits.AnnotationResolved | TagBits.DeprecatedAnnotationResolved) | (lambda.binding.tagBits & TagBits.HasParameterAnnotations);
 	    this.returnType = lambda.binding.returnType;
 	    this.parameters = lambda.binding.parameters;
+        if (this.returnType.isNonDenotable() || Stream.of(this.parameters).anyMatch(p -> p.isNonDenotable())) {
+        	this.modifiers &= ~ExtraCompilerModifiers.AccGenericSignature;
+        }
 	    TypeVariableBinding[] vars = Stream.of(this.parameters).filter(param -> param.isTypeVariable()).toArray(TypeVariableBinding[]::new);
 	    if (vars != null && vars.length > 0)
 	    	this.typeVariables = vars;
@@ -660,6 +663,16 @@ public class SyntheticMethodBinding extends MethodBinding {
 	@Override
 	public LambdaExpression sourceLambda() {
 		return this.lambda;
+	}
+
+	@Override
+	public ParameterNonNullDefaultProvider hasNonNullDefaultForParameter(AbstractMethodDeclaration srcMethod) {
+		switch (this.purpose) {
+			case SyntheticMethodBinding.RecordOverrideEquals:
+				return ParameterNonNullDefaultProvider.FALSE_PROVIDER;
+			default:
+				return super.hasNonNullDefaultForParameter(srcMethod);
+		}
 	}
 
 	public void markNonNull(LookupEnvironment environment) {

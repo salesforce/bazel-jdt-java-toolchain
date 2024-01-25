@@ -19,6 +19,7 @@ import static com.google.common.collect.Iterables.getOnlyElement;
 import static com.google.common.collect.MoreCollectors.toOptional;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Comparator.comparing;
+import static java.util.stream.Collectors.joining;
 
 import java.io.IOError;
 import java.io.IOException;
@@ -131,6 +132,29 @@ public class BlazeEcjToolMain {
 //        }
 //      }
     }
+
+    if(javacArguments.contains("-verbose")) {
+    	errWriter.println();
+    	errWriter.println();
+    	errWriter.println("----------------------");
+    	errWriter.println("ECJ Tool javac options:");
+    	errWriter.println("----------------------");
+    	errWriter.println(javacArguments.stream().collect(joining(System.lineSeparator())));
+    	errWriter.println("-----------------");
+    	errWriter.println();
+    	errWriter.println();
+    	errWriter.println("-----------------");
+    	errWriter.println("java.home:           " + System.getProperty("java.home"));
+    	errWriter.println("java.version:        " + System.getProperty("java.version"));
+    	errWriter.println("java.vm.name:        " + System.getProperty("java.vm.name"));
+    	errWriter.println("java.vm.version:     " + System.getProperty("java.vm.version"));
+    	errWriter.println("java.vendor:         " + System.getProperty("java.vendor"));
+    	errWriter.println("java.vendor.version: " + System.getProperty("java.vendor.version"));
+    	errWriter.println("-----------------");
+    	errWriter.println();
+    	errWriter.println();
+    }
+
 
     errWriter.flush();
     ImmutableList<FormattedDiagnostic> diagnostics = diagnosticsBuilder.build();

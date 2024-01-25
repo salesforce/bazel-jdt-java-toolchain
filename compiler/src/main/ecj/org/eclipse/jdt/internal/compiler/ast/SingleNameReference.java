@@ -146,8 +146,12 @@ public FlowInfo analyseAssignment(BlockScope currentScope, FlowContext flowConte
 			}
 			if (flowInfo.isPotentiallyAssigned(localBinding) || (this.bits & ASTNode.IsCapturedOuterLocal) != 0) {
 				localBinding.tagBits &= ~TagBits.IsEffectivelyFinal;
-				if (!isFinal && (this.bits & ASTNode.IsCapturedOuterLocal) != 0) {
-					currentScope.problemReporter().cannotReferToNonEffectivelyFinalOuterLocal(localBinding, this);
+				if (!isFinal) {
+					if ((this.bits & ASTNode.IsCapturedOuterLocal) != 0) {
+						currentScope.problemReporter().cannotReferToNonEffectivelyFinalOuterLocal(localBinding, this);
+					} else if ((this.bits & ASTNode.IsUsedInPatternGuard) != 0) {
+						currentScope.problemReporter().cannotReferToNonFinalLocalInGuard(localBinding, this);
+					}
 				}
 			}
 			if (! isFinal && (localBinding.tagBits & TagBits.IsEffectivelyFinal) != 0 && (localBinding.tagBits & TagBits.IsArgument) == 0) {
@@ -169,7 +173,9 @@ public FlowInfo analyseAssignment(BlockScope currentScope, FlowContext flowConte
 				}
 			}
 			else /* avoid double diagnostic */ if ((localBinding.tagBits & TagBits.IsArgument) != 0) {
-				currentScope.problemReporter().parameterAssignment(localBinding, this);
+				MethodBinding owner = localBinding.getEnclosingMethod();
+				if (owner == null /*lambda */ || !owner.isCompactConstructor())
+					currentScope.problemReporter().parameterAssignment(localBinding, this);
 			}
 			flowInfo.markAsDefinitelyAssigned(localBinding);
 	}

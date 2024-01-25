@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2020 IBM Corporation and others.
+ * Copyright (c) 2000, 2023 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -23,9 +23,6 @@ public class MissingTypeBinding extends BinaryTypeBinding {
 
 /**
  * Special constructor for constructing proxies of missing types (114349)
- * @param packageBinding
- * @param compoundName
- * @param environment
  */
 public MissingTypeBinding(PackageBinding packageBinding, char[][] compoundName, LookupEnvironment environment) {
 	this.compoundName = compoundName;
@@ -42,6 +39,7 @@ public MissingTypeBinding(PackageBinding packageBinding, char[][] compoundName, 
 	this.typeVariables = Binding.NO_TYPE_VARIABLES;
 	this.memberTypes = Binding.NO_MEMBER_TYPES;
 	this.fields = Binding.NO_FIELDS;
+	this.components = Binding.NO_COMPONENTS;
 	this.methods = Binding.NO_METHODS;
 }
 
@@ -75,7 +73,6 @@ public int problemId() {
 
 /**
  * Only used to fixup the superclass hierarchy of proxy binary types
- * @param missingSuperclass
  * @see LookupEnvironment#createMissingType(PackageBinding, char[][])
  */
 void setMissingSuperclass(ReferenceBinding missingSuperclass) {

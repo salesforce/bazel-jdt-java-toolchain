@@ -118,15 +118,20 @@ public class NullAnnotationMatching {
 	}
 
 	private final Severity severity;
+	private final boolean problemAtDetail;
 
 	/** If non-null this field holds the supertype of the provided type which was used for direct matching. */
 	public final TypeBinding superTypeHint;
 	public final int nullStatus;
 
 	NullAnnotationMatching(Severity severity, int nullStatus, TypeBinding superTypeHint) {
+		this(false, severity, nullStatus, superTypeHint);
+	}
+	NullAnnotationMatching(boolean atDetail, Severity severity, int nullStatus, TypeBinding superTypeHint) {
 		this.severity = severity;
 		this.superTypeHint = superTypeHint;
 		this.nullStatus = nullStatus;
+		this.problemAtDetail = atDetail;
 	}
 
 	/**
@@ -211,8 +216,6 @@ public class NullAnnotationMatching {
 
 	/**
 	 * Find any mismatches between the two given types, which are caused by null type annotations.
-	 * @param requiredType
-	 * @param providedType
 	 * @param nullStatus we are only interested in NULL or NON_NULL, -1 indicates that we are in a recursion, where flow info is ignored
 	 * @return a status object representing the severity of mismatching plus optionally a supertype hint
 	 */
@@ -221,8 +224,6 @@ public class NullAnnotationMatching {
 	}
 	/**
 	 * Find any mismatches between the two given types, which are caused by null type annotations.
-	 * @param requiredType
-	 * @param providedType
 	 * @param providedSubstitute in inheritance situations this maps the providedType into the realm of the subclass, needed for TVB identity checks.
 	 * 		Pass null if not interested in these added checks.
 	 * @param substitution TODO
@@ -241,6 +242,7 @@ public class NullAnnotationMatching {
 			TypeBinding superTypeHint = null;
 			TypeBinding originalRequiredType = requiredType;
 			NullAnnotationMatching okStatus = NullAnnotationMatching.NULL_ANNOTATIONS_OK;
+			boolean problemAtDetail = false;
 			if (areSameTypes(requiredType, providedType, providedSubstitute)) {
 				if ((requiredType.tagBits & TagBits.AnnotationNonNull) != 0)
 					return okNonNullStatus(providedExpression);
@@ -266,7 +268,9 @@ public class NullAnnotationMatching {
 						NullAnnotationMatching status = analyse(superClass, providedType, null, substitution, nullStatus, providedExpression, CheckMode.BOUND_SUPER_CHECK);
 						severity = severity.max(status.severity);
 						if (severity == Severity.MISMATCH)
-							return new NullAnnotationMatching(severity, nullStatus, superTypeHint);
+							return new NullAnnotationMatching(true, severity, nullStatus, superTypeHint);
+						else if (severity != Severity.OK)
+							problemAtDetail = true;
 					}
 					TypeBinding[] superInterfaces = requiredType.superInterfaces();
 					if (superInterfaces != null) {
@@ -275,7 +279,9 @@ public class NullAnnotationMatching {
 								NullAnnotationMatching status = analyse(superInterfaces[i], providedType, null, substitution, nullStatus, providedExpression, CheckMode.BOUND_SUPER_CHECK);
 								severity = severity.max(status.severity);
 								if (severity == Severity.MISMATCH)
-									return new NullAnnotationMatching(severity, nullStatus, superTypeHint);
+									return new NullAnnotationMatching(true, severity, nullStatus, superTypeHint);
+								else if (severity != Severity.OK)
+									problemAtDetail = true;
 							}
 						}
 					}
@@ -316,7 +322,7 @@ public class NullAnnotationMatching {
 								severity = severity.max(dimSeverity);
 								if (severity == Severity.MISMATCH) {
 									if (nullStatus == FlowInfo.NULL)
-										return new NullAnnotationMatching(severity, nullStatus, null);
+										return new NullAnnotationMatching(true, severity, nullStatus, null);
 									return NullAnnotationMatching.NULL_ANNOTATIONS_MISMATCH;
 								}
 							}
@@ -366,7 +372,9 @@ public class NullAnnotationMatching {
 								NullAnnotationMatching status = analyse(requiredArguments[i], providedArguments[i], providedArgSubstitute, substitution, -1, providedExpression, mode.toDetail());
 								severity = severity.max(status.severity);
 								if (severity == Severity.MISMATCH)
-									return new NullAnnotationMatching(severity, nullStatus, superTypeHint);
+									return new NullAnnotationMatching(true, severity, nullStatus, superTypeHint);
+								else if (severity != Severity.OK)
+									problemAtDetail = true;
 							}
 						}
 					}
@@ -381,7 +389,7 @@ public class NullAnnotationMatching {
 			}
 			if (!severity.isAnyMismatch())
 				return okStatus;
-			return new NullAnnotationMatching(severity, nullStatus, superTypeHint);
+			return new NullAnnotationMatching(problemAtDetail, severity, nullStatus, superTypeHint);
 		} finally {
 			requiredType.exitRecursiveFunction();
 		}
@@ -389,6 +397,21 @@ public class NullAnnotationMatching {
 	public void report(Scope scope) {
 		// nop
 	}
+	public int getProblemId(TypeBinding requiredType) {
+		if (isAnnotatedToUnannotated()) {
+			return IProblem.AnnotatedTypeArgumentToUnannotated;
+		} else if (isUnchecked()) {
+			if (this.problemAtDetail)
+				return IProblem.NullityUncheckedTypeAnnotationDetail;
+			else
+				return IProblem.NullityUncheckedTypeAnnotation;
+		} else if (requiredType.isTypeVariable() && !requiredType.hasNullTypeAnnotations()) {
+			return IProblem.NullityMismatchAgainstFreeTypeVariable;
+		} else {
+			return IProblem.NullityMismatchingTypeAnnotation;
+		}
+	}
+
 	public static NullAnnotationMatching okNonNullStatus(final Expression providedExpression) {
 		if (providedExpression instanceof MessageSend) {
 			final MethodBinding method = ((MessageSend) providedExpression).binding;

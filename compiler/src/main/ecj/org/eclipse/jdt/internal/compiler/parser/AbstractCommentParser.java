@@ -13,8 +13,18 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.compiler.parser;
 
+import static org.eclipse.jdt.internal.compiler.parser.TerminalTokens.TokenNameEOF;
+
+import java.io.IOException;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.eclipse.jdt.core.compiler.CharOperation;
 import org.eclipse.jdt.core.compiler.InvalidInputException;
@@ -85,6 +95,9 @@ public abstract class AbstractCommentParser implements JavadocTagConstants {
 	protected int kind;
 	protected int tagValue = NO_TAG_VALUE;
 	protected int lastBlockTagValue = NO_TAG_VALUE;
+	protected boolean snippetInlineTagStarted = false;
+	private int nonRegionTagCount, inlineTagCount;
+	final static String SINGLE_LINE_COMMENT = "//"; //$NON-NLS-1$
 
 	// Line pointers
 	private int linePtr, lastLinePtr;
@@ -111,6 +124,9 @@ public abstract class AbstractCommentParser implements JavadocTagConstants {
 	protected int providesReferencesPtr = -1;
 	protected TypeReference[] providesReferencesStack;
 
+	// Snippet search project path as src classpath for file/class support
+	private String projectPath;
+	private List srcClasspath;
 
 	protected AbstractCommentParser(Parser sourceParser) {
 		this.sourceParser = sourceParser;
@@ -235,7 +251,7 @@ public abstract class AbstractCommentParser implements JavadocTagConstants {
 								this.inlineTagStarted = false;
 								openingBraces = 0;
 							}
-						} else if ((!this.lineStarted || previousChar == '{')) {
+						} else if ((!this.lineStarted || previousChar == '{') || lookForTagsInSnippets()) {
 							if (this.inlineTagStarted) {
 								setInlineTagStarted(false);
 								// bug https://bugs.eclipse.org/bugs/show_bug.cgi?id=53279
@@ -261,6 +277,7 @@ public abstract class AbstractCommentParser implements JavadocTagConstants {
 								setInlineTagStarted(true);
 								invalidInlineTagLineEnd = this.lineEnd;
 							} else if (this.textStart != -1 && this.textStart < invalidTagLineEnd) {
+								if(!lookForTagsInSnippets())
 								pushText(this.textStart, invalidTagLineEnd);
 							}
 							this.scanner.resetTo(this.index, this.javadocEnd);
@@ -526,6 +543,13 @@ public abstract class AbstractCommentParser implements JavadocTagConstants {
 	 * Parse argument in @see tag method reference
 	 */
 	protected Object parseArguments(Object receiver) throws InvalidInputException {
+		return parseArguments(receiver, true);
+	}
+
+	/*
+	 * Parse argument in @see tag method reference
+	 */
+	protected Object parseArguments(Object receiver, boolean checkVerifySpaceOrEndComment) throws InvalidInputException {
 
 		// Init
 		int modulo = 0; // should be 2 for (Type,Type,...) or 3 for (Type arg,Type arg,...)
@@ -641,7 +665,7 @@ public abstract class AbstractCommentParser implements JavadocTagConstants {
 					iToken++;
 				} else if (token == TerminalTokens.TokenNameRPAREN) {
 					// verify characters after arguments declaration (expecting white space or end comment)
-					if (!verifySpaceOrEndComment()) {
+					if (checkVerifySpaceOrEndComment && !verifySpaceOrEndComment()) {
 						int end = this.starPosition == -1 ? this.lineEnd : this.starPosition;
 						if (this.source[end]=='\n') end--;
 						if (this.reportProblems) this.sourceParser.problemReporter().javadocMalformedSeeReference(start, end);
@@ -659,7 +683,7 @@ public abstract class AbstractCommentParser implements JavadocTagConstants {
 			}
 
 			// Something wrong happened => Invalid input
-			throw new InvalidInputException();
+			throw Scanner.invalidInput();
 		} finally {
 			// we have to make sure that this is reset to the previous value even if an exception occurs
 			this.scanner.tokenizeWhiteSpace = tokenWhiteSpace;
@@ -683,6 +707,10 @@ public abstract class AbstractCommentParser implements JavadocTagConstants {
 	 * @throws InvalidInputException If any problem happens during the parse in this area
 	 */
 	protected boolean parseHtmlTag(int previousPosition, int endTextPosition) throws InvalidInputException {
+		return false;
+	}
+
+	protected boolean lookForTagsInSnippets() {
 		return false;
 	}
 
@@ -797,10 +825,14 @@ public abstract class AbstractCommentParser implements JavadocTagConstants {
 		return false;
 	}
 
+	protected Object parseMember(Object receiver) throws InvalidInputException {
+		return parseMember(receiver, false);
+	}
+
 	/*
 	 * Parse a method reference in @see tag
 	 */
-	protected Object parseMember(Object receiver) throws InvalidInputException {
+	protected Object parseMember(Object receiver, boolean refInStringLiteral) throws InvalidInputException {
 		// Init
 		this.identifierPtr = -1;
 		this.identifierLengthPtr = -1;
@@ -820,19 +852,27 @@ public abstract class AbstractCommentParser implements JavadocTagConstants {
 			try {
 				// Look for next token to know whether it's a field or method reference
 				int previousPosition = this.index;
-				if (readToken() == TerminalTokens.TokenNameLPAREN) {
-					consumeToken();
-					start = this.scanner.getCurrentTokenStartPosition();
-					try {
-						return parseArguments(receiver);
-					} catch (InvalidInputException e) {
-						int end = this.scanner.getCurrentTokenEndPosition() < this.lineEnd ?
-								this.scanner.getCurrentTokenEndPosition() :
-								this.scanner.getCurrentTokenStartPosition();
-						end = end < this.lineEnd ? end : this.lineEnd;
-						if (this.reportProblems) this.sourceParser.problemReporter().javadocInvalidSeeReferenceArgs(start, end);
+				try {
+					int token = readToken();
+					if (token == TerminalTokens.TokenNameLPAREN) {
+						consumeToken();
+						start = this.scanner.getCurrentTokenStartPosition();
+						try {
+							return parseArguments(receiver, !refInStringLiteral);
+						} catch (InvalidInputException e) {
+							int end = this.scanner.getCurrentTokenEndPosition() < this.lineEnd ?
+									this.scanner.getCurrentTokenEndPosition() :
+									this.scanner.getCurrentTokenStartPosition();
+							end = end < this.lineEnd ? end : this.lineEnd;
+							if (this.reportProblems) this.sourceParser.problemReporter().javadocInvalidSeeReferenceArgs(start, end);
+						}
+						return null;
 					}
-					return null;
+				} catch (InvalidInputException e) {
+					if (!refInStringLiteral || (!Scanner.INVALID_CHAR_IN_STRING.equals(e.getMessage())
+							&& !Scanner.INVALID_CHARACTER_CONSTANT.equals(e.getMessage()))) {
+						throw e;
+					}
 				}
 
 				// Reset position: we want to rescan last token
@@ -841,7 +881,7 @@ public abstract class AbstractCommentParser implements JavadocTagConstants {
 				this.currentTokenType = -1;
 
 				// Verify character(s) after identifier (expecting space or end comment)
-				if (!verifySpaceOrEndComment()) {
+				if (!refInStringLiteral && !verifySpaceOrEndComment()) {
 					int end = this.starPosition == -1 ? this.lineEnd : this.starPosition;
 					if (this.source[end]=='\n') end--;
 					if (this.reportProblems) this.sourceParser.problemReporter().javadocMalformedSeeReference(start, end);
@@ -1135,11 +1175,11 @@ public abstract class AbstractCommentParser implements JavadocTagConstants {
 					break;
 
 				case TerminalTokens.TokenNameRestrictedIdentifierYield:
-					throw new InvalidInputException(); // unexpected.
+					throw Scanner.invalidInput(); // unexpected.
 
 				case TerminalTokens.TokenNameDOT :
 					if ((iToken & 1) == 0) { // dots must be even tokens
-						throw new InvalidInputException();
+						throw Scanner.invalidInput();
 					}
 					consumeToken();
 					break;
@@ -1206,7 +1246,7 @@ public abstract class AbstractCommentParser implements JavadocTagConstants {
 				case TerminalTokens.TokenNameDIVIDE:
 					if (parsingJava15Plus && lookForModule) {
 						if (((iToken & 1) == 0) || (moduleRefTokenCount > 0)) { // '/' must be even token
-							throw new InvalidInputException();
+							throw Scanner.invalidInput();
 						}
 						moduleRefTokenCount = (iToken+1) / 2;
 						consumeToken();
@@ -1244,7 +1284,7 @@ public abstract class AbstractCommentParser implements JavadocTagConstants {
 								}
 								// $FALL-THROUGH$ - fall through default case to raise exception
 							default:
-								throw new InvalidInputException();
+								throw Scanner.invalidInput();
 						}
 					}
 					break nextToken;
@@ -1454,6 +1494,1441 @@ public abstract class AbstractCommentParser implements JavadocTagConstants {
 		return false;
 	}
 
+	protected boolean parseSnippet() throws InvalidInputException {
+		boolean tokenWhiteSpace = this.scanner.tokenizeWhiteSpace;
+		boolean tokenizeComments = this.scanner.tokenizeComments;
+		this.scanner.tokenizeWhiteSpace = true;
+		this.scanner.tokenizeComments = true;
+		int previousPosition = -1;
+		int lastRBracePosition = -1;
+		int openBraces = 1;
+		boolean parsingJava18Plus = this.scanner != null ? this.scanner.sourceLevel >= ClassFileConstants.JDK18 : false;
+		boolean valid = true;
+		if (!parsingJava18Plus) {
+			throw Scanner.invalidInput();
+		}
+		Object snippetTag = null;
+		this.nonRegionTagCount = 0;
+		this.inlineTagCount = 0;
+		try {
+			snippetTag = createSnippetTag();
+			Map<String, String> snippetAttributes  = new HashMap();
+			if (!parseTillColon(snippetAttributes)) {
+				int token = readTokenSafely();
+				boolean eitherNameorClass = token == TerminalTokens.TokenNameIdentifier || token == TerminalTokens.TokenNameclass ;
+				if (!eitherNameorClass ) {
+					this.setSnippetError(snippetTag, "Missing colon"); //$NON-NLS-1$
+					this.setSnippetIsValid(snippetTag, false);
+					if(this.reportProblems)
+						this.sourceParser.problemReporter().javadocInvalidSnippetMissingColon(this.index, this.lineEnd);
+					valid = false;
+				} else {
+					final String FILE = "file"; //$NON-NLS-1$
+					final String CLASS = "class"; //$NON-NLS-1$
+					consumeToken();
+					valid = false;
+					String snippetType = this.scanner.getCurrentTokenString();
+					switch (snippetType) {
+						case FILE:
+							consumeToken();
+							int start = this.scanner.getCurrentTokenStartPosition();
+							token = readTokenSafely();
+							if (token==TerminalTokens.TokenNameEQUAL) {
+								consumeToken();
+								token = readTokenSafely();
+								String regionName = null;
+								if (token==TerminalTokens.TokenNameERROR||token==TerminalTokens.TokenNameStringLiteral){
+									String fileName = this.scanner.getCurrentTokenString();
+									int lastIndex = fileName.length() - 1;
+									if ((fileName.charAt(0) =='"' && fileName.charAt(lastIndex)=='"')
+											||(fileName.charAt(0) =='\'' && fileName.charAt(lastIndex)=='\'')) {
+										fileName = fileName.substring(1, lastIndex); // strip out quotes
+										Path filePath = getFilePathFromFileName(fileName);
+										try {
+											valid = filePath==null ? false : readFileWithRegions(start, regionName, filePath, snippetTag);
+										} catch (IOException e) {
+											valid = false;
+											this.setSnippetError(snippetTag, "Error in reading file"); //$NON-NLS-1$
+										}
+									}
+								}
+							}
+							if (snippetTag != null) {
+								this.setSnippetIsValid(snippetTag, valid);
+							}
+							break;
+						case CLASS:
+							consumeToken();
+							start = this.scanner.getCurrentTokenStartPosition();
+							token = readTokenSafely();
+							if (token==TerminalTokens.TokenNameEQUAL) {
+								consumeToken();
+								token = readTokenSafely();
+								String regionName = null;
+								if (token==TerminalTokens.TokenNameERROR||token==TerminalTokens.TokenNameStringLiteral){
+									String className = this.scanner.getCurrentTokenString();
+									int lastIndex = className.length() - 1;
+									if ((className.charAt(0) =='"' && className.charAt(lastIndex)=='"')
+											||(className.charAt(0) =='\'' && className.charAt(lastIndex)=='\'')) {
+										className = className.substring(1, lastIndex); // strip out quotes
+										if(className.contains(".")) { //$NON-NLS-1$
+											className = className.replace('.', '/');
+										}
+										String fileName = className+".java";//$NON-NLS-1$
+										Path filePath = getFilePathFromFileName(fileName);
+
+										try {
+											valid = filePath==null ? false : readFileWithRegions(start, regionName, filePath, snippetTag);
+										} catch (IOException e) {
+											valid = false;
+											this.setSnippetError(snippetTag, "Error in reading class"); //$NON-NLS-1$
+										}
+									}
+								}
+							}
+							if (snippetTag != null) {
+								this.setSnippetIsValid(snippetTag, valid);
+							}
+							break;
+						default:
+							valid = false;
+					}
+				}
+			} else {
+				if (this.index < this.scanner.eofPosition) {
+					int token = readTokenSafely();
+					if (token == TerminalTokens.TokenNameWHITESPACE) {
+						if (containsNewLine(this.scanner.getCurrentTokenString())) {
+							consumeToken();
+						} else {
+							valid = false;
+							if(this.reportProblems) {
+								//after colon new line required
+								this.sourceParser.problemReporter().javadocInvalidSnippetContentNewLine(this.index, this.lineEnd);
+							}
+							this.setSnippetIsValid(snippetTag, false);
+							this.setSnippetError(snippetTag, "Snippet content should be in a new line"); //$NON-NLS-1$
+
+						}
+					}
+				} else {
+					//when will this happen?? never?
+					valid = false;
+				}
+			}
+			if(hasID(snippetAttributes)) {
+				this.setSnippetID(snippetTag, getID(snippetAttributes));
+			}
+			int textEndPosition = this.index;
+			this.textStart = this.index;
+			int token;
+			while (this.index < this.scanner.eofPosition) {
+				this.index = this.scanner.currentPosition;
+				if (openBraces == 0) {
+					break;
+				}
+				previousPosition = this.index;
+				token = readTokenSafely();
+				if (token == TerminalTokens.TokenNameEOF) {
+					break;
+				}
+				switch (token) {
+					case TerminalTokens.TokenNameLBRACE:
+						openBraces++;
+						textEndPosition = this.index;
+						break;
+					case TerminalTokens.TokenNameRBRACE:
+						openBraces--;
+						textEndPosition = this.index;
+						lastRBracePosition = this.scanner.currentPosition;
+						if (openBraces == 0) {
+							if (this.lineStarted) {
+								if (this.textStart == -1) {
+									this.textStart = previousPosition;
+								}
+								if (this.textStart != -1 && this.textStart < this.index) {
+									String textToBeAdded= new String( this.source, this.textStart, this.index-this.textStart);
+									int iindex = textToBeAdded.indexOf('*');
+									if (iindex > -1 && textToBeAdded.substring(0, iindex+1).trim().equals("*")) { //$NON-NLS-1$
+										textToBeAdded = textToBeAdded.substring(iindex+1);
+									}
+									if (!textToBeAdded.isBlank()) {
+										pushSnippetText(this.source, this.textStart, this.index-1, false, snippetTag);
+										this.nonRegionTagCount = 0;
+										this.inlineTagCount = 0;
+									}
+								}
+							}
+						}
+						break;
+					case TerminalTokens.TokenNameWHITESPACE:
+						if (containsNewLine(this.scanner.getCurrentTokenString())) {
+							if (this.lineStarted) {
+								if (this.textStart != -1 && this.textStart < textEndPosition) {
+									if (isProperties(snippetAttributes)) { //single quotes
+										String str = new String(this.source, this.textStart,
+												textEndPosition - this.textStart);
+										if (str.length() > 0 && (str.charAt(0) == '*' ||  str.charAt(0) == '#' ))  {
+											if(str.charAt(0) == '*' )
+												str = str.substring(1);
+											str = str.stripLeading().stripTrailing();
+											if (str.length() > 0 && str.charAt(0) == '#'
+													&& str.charAt(str.length() - 1) == ':') {
+												str = SINGLE_LINE_COMMENT + str.substring(1, str.length() - 1);
+												Object innerTag = parseSnippetInlineTags(str, snippetTag, this.scanner);
+												if (innerTag != null) {
+													addSnippetInnerTag(innerTag, snippetTag);
+													this.snippetInlineTagStarted = true;
+													this.lineStarted = false;
+													this.textStart = -1;
+													break;
+												}
+											}
+										}
+									}
+									pushSnippetText(this.source, this.textStart, textEndPosition, true, snippetTag);
+									this.nonRegionTagCount = 0;
+									this.inlineTagCount = 0;
+								}
+							}
+							this.lineStarted = false;
+							// Fix bug 51650
+							this.textStart = -1;
+						}
+						break;
+					case TerminalTokens.TokenNameCOMMENT_LINE:
+						String tokenString = this.scanner.getCurrentTokenString();
+						boolean handleNow = handleCommentLineForCurrentLine(tokenString);
+						boolean lvalid = false;
+						int indexOfLastComment = -1;
+						int noSingleLineComm = getNumberOfSingleLineCommentInSnippetTag(tokenString.substring(2));
+						if (noSingleLineComm > 0)
+							indexOfLastComment = indexOfLastSingleComment(tokenString.substring(2),noSingleLineComm);
+						if (!handleNow) {
+							this.nonRegionTagCount = 0;
+							this.inlineTagCount = 0;
+						}
+						Object innerTag = parseSnippetInlineTags(indexOfLastComment == -1 ? tokenString : tokenString.substring(indexOfLastComment+2), snippetTag, this.scanner);
+						if (innerTag != null) {
+							lvalid = true;
+						}
+						if( lvalid && handleNow && innerTag != snippetTag) {
+							if ( innerTag != snippetTag )
+								addSnippetInnerTag(innerTag, snippetTag);
+							this.snippetInlineTagStarted = true;
+						}
+						textEndPosition = this.index;
+						int textPos = previousPosition;
+						if (!lvalid) {
+							textPos = textEndPosition;
+						}
+						if (this.lineStarted) {
+							if (this.textStart == -1) {
+								this.textStart = previousPosition;
+							}
+							if (this.textStart != -1 && this.textStart < this.index) {
+								pushSnippetText(this.source, this.textStart,(innerTag!=null &&  indexOfLastComment >=0) ? textPos+indexOfLastComment+2:textPos, lvalid, snippetTag);
+								if (handleNow) {
+									this.nonRegionTagCount = 0;
+									this.inlineTagCount = 0;
+								}
+							}
+						}
+						if (lvalid && !handleNow) {
+							if ( innerTag != snippetTag )
+								addSnippetInnerTag(innerTag, snippetTag);
+							this.snippetInlineTagStarted = true;
+						}
+						//valid = valid & lvalid;
+						break;
+					default:
+						if (!this.lineStarted || this.textStart == -1) {
+							this.textStart = previousPosition;
+						}
+						this.lineStarted = true;
+						textEndPosition = this.index;
+						break;
+				}
+				consumeToken();
+			}
+		}
+		finally {
+			if(!areRegionsClosed()) {
+				if(this.reportProblems) {
+					this.sourceParser.problemReporter().javadocInvalidSnippetRegionNotClosed(this.index, this.lineEnd);
+				}
+				this.setSnippetError(snippetTag, "Region not closed"); //$NON-NLS-1$
+				this.setSnippetIsValid(snippetTag, false);
+			}
+			// we have to make sure that this is reset to the previous value even if an exception occurs
+			this.scanner.tokenizeWhiteSpace = tokenWhiteSpace;
+			this.scanner.tokenizeComments = tokenizeComments;
+		}
+		boolean retVal = false;
+		if (!valid) {
+			retVal =  false;
+		} else if (openBraces == 0) {
+			this.scanner.currentPosition = lastRBracePosition-1;
+			this.index = lastRBracePosition-1;
+			retVal = true;
+		}
+		if (retVal == false && openBraces == 0) {
+			this.scanner.currentPosition = lastRBracePosition - 1;
+			this.index = lastRBracePosition - 1;
+		}
+		if (snippetTag != null) {
+			this.setSnippetIsValid(snippetTag, retVal);
+		}
+		return retVal;
+	}
+
+	private Path getFilePathFromFileName(String fileName) {
+		if(this.projectPath == null)
+			return null;
+		ArrayList<String> sourceClassPaths = (ArrayList<String>) this.srcClasspath;
+		Path filePath = null;
+		for (String iPath : sourceClassPaths) {
+			filePath = FileSystems.getDefault().getPath(this.projectPath, iPath, fileName);
+			if(filePath.toFile().exists())
+				break;
+		}
+		return filePath;
+	}
+
+	private boolean readFileWithRegions(int start, String regionName, Path filePath, Object snippetTag) throws IOException {
+		boolean valid = false;
+		int token;
+		int lastIndex;
+		String contents = Files.readString(filePath);
+		int end = this.scanner.getCurrentTokenEndPosition();
+		consumeToken();
+		boolean foundRegionDef = false;
+		final String REGION = "region"; //$NON-NLS-1$
+		while (this.index<this.scanner.eofPosition) {
+			token = readTokenSafely();
+			if (token == TerminalTokens.TokenNameRBRACE) {
+				end = this.index;
+				valid = true;
+				break;
+			} else if (token == TerminalTokens.TokenNameIdentifier) {
+				consumeToken();
+				if (this.scanner.getCurrentTokenString().equals(REGION)) {
+					foundRegionDef = true;
+					break;
+				}
+			} else {
+				consumeToken();
+			}
+		}
+
+		if (foundRegionDef) {
+			token = readTokenSafely();
+			if (token!= TerminalTokens.TokenNameEQUAL) {
+				valid = false;
+			}
+			consumeToken();
+			token = readTokenSafely();
+			if (token==TerminalTokens.TokenNameERROR
+					|| token==TerminalTokens.TokenNameStringLiteral
+					|| token==TerminalTokens.TokenNameIdentifier){
+				regionName = this.scanner.getCurrentTokenString();
+				consumeToken();
+				lastIndex = regionName.length() - 1;
+				if ((regionName.charAt(0) =='"' && regionName.charAt(lastIndex)=='"')
+						||(regionName.charAt(0) =='\'' && regionName.charAt(lastIndex)=='\'')) {
+					regionName = regionName.substring(1, lastIndex); // strip out quotes
+					end = this.scanner.getCurrentTokenEndPosition();
+				}
+				while (this.index<this.scanner.eofPosition) {
+					token = readTokenSafely();
+					if (token == TerminalTokens.TokenNameRBRACE) {
+						end = this.index;
+						valid = true;
+						break;
+					} else {
+						consumeToken();
+					}
+				}
+			}
+		}
+
+		if (valid) {
+			String snippetText = extractExternalSnippet(contents, regionName);
+			//pushExternalSnippetText(snippetText, start, end);
+			parseExternalSnippet(snippetText, snippetTag);
+			this.index = end;
+			this.scanner.currentPosition = end;
+		}
+		return valid;
+	}
+
+	private void parseExternalSnippet(String content,  Object snippetTag) {
+		Scanner snippetScanner = new Scanner(true, true, false, this.scanner.sourceLevel, this.scanner.complianceLevel,
+				null, null, false, false);
+		snippetScanner.setSource(content.toCharArray());
+		int indexPos = 0;
+		int textStartPosition = indexPos;
+		int textEndPosition = indexPos;
+		int previousPosition = indexPos;
+		boolean resetTextStartPos = true;
+		boolean newLineStarted = false;
+		try {
+			while (true) {
+				int tokenType;
+				previousPosition = indexPos;
+				tokenType = snippetScanner.getNextToken();
+
+				if (tokenType == TokenNameEOF) {
+					if (!resetTextStartPos) {
+						pushExternalSnippetText(snippetScanner.source, textStartPosition, textEndPosition, false, snippetTag);
+					}
+					break;
+				}
+
+				indexPos = snippetScanner.currentPosition;
+				textEndPosition = indexPos;
+				if (resetTextStartPos) {
+					textStartPosition = snippetScanner.getCurrentTokenStartPosition();
+					newLineStarted = true;
+					resetTextStartPos = false;
+				}
+				switch (tokenType) {
+					case TerminalTokens.TokenNameWHITESPACE:
+						if (containsNewLine(snippetScanner.getCurrentTokenString())) {
+							pushExternalSnippetText(snippetScanner.source, textStartPosition, textEndPosition, false, snippetTag);
+							resetTextStartPos = true;
+							newLineStarted = false;
+						}
+						break;
+					case TerminalTokens.TokenNameCOMMENT_LINE:
+						String tokenString = snippetScanner.getCurrentTokenString();
+						boolean handleNow = handleCommentLineForCurrentLine(tokenString);
+						boolean lvalid = false;
+						int indexOfLastComment = -1;
+						int noSingleLineComm = getNumberOfSingleLineCommentInSnippetTag(tokenString.substring(2));
+						if (noSingleLineComm > 0)
+							indexOfLastComment = indexOfLastSingleComment(tokenString.substring(2),noSingleLineComm);
+						if (!handleNow) {
+							this.nonRegionTagCount = 0;
+							this.inlineTagCount = 0;
+						}
+						Object innerTag = parseSnippetInlineTags(indexOfLastComment == -1 ? tokenString : tokenString.substring(indexOfLastComment+2), snippetTag, snippetScanner);
+						if (innerTag != null) {
+							lvalid = true;
+						}
+						if( lvalid && handleNow && innerTag != snippetTag) {
+							if ( innerTag != snippetTag )
+								addSnippetInnerTag(innerTag, snippetTag);
+							this.snippetInlineTagStarted = true;
+						}
+						textEndPosition = this.index;
+						int textPos = previousPosition;
+						if (!lvalid) {
+							textPos = textEndPosition;
+						}
+						if (newLineStarted) {
+							if (textStartPosition == -1) {
+								textStartPosition = previousPosition;
+							}
+							if (textStartPosition != -1 && textStartPosition < indexPos) {
+								pushExternalSnippetText(snippetScanner.source, textStartPosition,(innerTag!=null &&  indexOfLastComment >=0) ? textPos+indexOfLastComment+2:textPos, true, snippetTag);
+								resetTextStartPos = true;
+								newLineStarted = false;
+								if (handleNow) {
+									this.nonRegionTagCount = 0;
+									this.inlineTagCount = 0;
+								}
+							}
+						}
+						if (lvalid && !handleNow) {
+							if ( innerTag != snippetTag )
+								addSnippetInnerTag(innerTag, snippetTag);
+							this.snippetInlineTagStarted = true;
+						}
+						//valid = valid & lvalid;
+						break;
+					default:
+						textEndPosition = indexPos;
+						break;
+				}
+			}
+		} catch (InvalidInputException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return;
+	}
+
+	private String extractExternalSnippet(String contents, String region) {
+		String snippetString = ""; //$NON-NLS-1$
+		final String START  = "start"; //$NON-NLS-1$
+		final String END    = "end"; //$NON-NLS-1$
+		final String REGION = "region"; //$NON-NLS-1$
+		final String HIGHLIGHT = "highlight"; //$NON-NLS-1$
+		final String REPLACE = "replace"; //$NON-NLS-1$
+		final String LINK = "link"; //$NON-NLS-1$
+		boolean insideRegion = false;
+		boolean regionStarted = false;
+		boolean containsRegionStartSnippetTags = false;
+		Scanner snippetScanner = new Scanner(true, true, false, this.scanner.sourceLevel, this.scanner.complianceLevel,
+				null, null, false, false);
+		snippetScanner.setSource(contents.toCharArray());
+		Deque<String> stack = new ArrayDeque<>();
+		if (region == null) {
+			return contents;
+		}
+		int count = 0;
+		while (true) {
+			int tokenType = 0;
+			try {
+				tokenType = snippetScanner.getNextToken();
+				if (!insideRegion && regionStarted) {
+					break;
+				}
+				if (tokenType == TokenNameEOF)
+					break;
+				if (tokenType == TerminalTokens.TokenNameCOMMENT_LINE) {
+					String commentLine = snippetScanner.getCurrentTokenString();
+					int noSingleLineComm = getNumberOfSingleLineCommentInSnippetTag(commentLine.substring(2));
+					int indexOfLastComment = 0;
+					String commentStr = commentLine;
+					if (noSingleLineComm > 0) {
+						indexOfLastComment = indexOfLastSingleComment(commentLine.substring(2),noSingleLineComm);
+						commentStr = commentLine.substring(indexOfLastComment+2);
+					}
+					Scanner commentScanner = new JavadocScanner(false, false, false/* nls */, this.scanner.sourceLevel, this.scanner.complianceLevel,
+							null/* taskTags */, null/* taskPriorities */, false/* taskCaseSensitive */, false, true, true);
+
+					if (commentStr.startsWith("//")) { //$NON-NLS-1$
+						commentStr = commentStr.substring(2);
+					}
+					commentScanner.setSource(commentStr.toCharArray());
+					boolean atTokenStarted = false;
+					boolean insideValid = false;
+					boolean isRegion = false;
+					boolean getRegionValue = false;
+					String attribute = null;
+					while (true) {
+						int cType = commentScanner.getNextToken();
+						if (cType == TokenNameEOF) {
+							break;
+						}
+						switch (cType) {
+							case TerminalTokens.TokenNameAT :
+								atTokenStarted = true;
+								insideValid = false;
+								isRegion = false;
+								getRegionValue = false;
+								attribute = null;
+								break;
+							case TerminalTokens.TokenNameIdentifier :
+								if (atTokenStarted) {
+									String tokenStr = commentScanner.getCurrentTokenString();
+									insideValid = false;
+									isRegion = false;
+									getRegionValue = false;
+									switch (tokenStr) {
+										case START:
+											insideValid = true;
+											attribute = tokenStr;
+											break;
+										case HIGHLIGHT:
+										case REPLACE:
+										case LINK:
+										case END:
+											if (insideRegion) {
+												insideValid = true;
+												attribute = tokenStr;
+											} else {
+												insideValid = false;
+											}
+											break;
+										default:
+											insideValid = false;
+											break;
+									}
+								} else if (insideValid) {
+									String tokenStr = commentScanner.getCurrentTokenString();
+									switch (tokenStr) {
+										case REGION:
+											isRegion = true;
+											break;
+										default:
+											if (getRegionValue) {
+												String regionStr = commentScanner.getCurrentTokenString();
+												regionStr = stripQuotes(regionStr);
+												if (START.equals(attribute) &&  regionStr.equals(region)) {
+													insideRegion = true;
+													regionStarted = true;
+												}
+												if (END.equals(attribute)) {
+													if (regionStr.equals(region)) {
+														insideRegion = false;
+													}
+													stack.removeFirst();
+												}
+												if (!END.equals(attribute) && insideRegion) {
+													stack.addFirst(attribute);
+												}
+												attribute = null;
+												getRegionValue = false;
+											}
+											isRegion = false;
+											break;
+									}
+								}
+								atTokenStarted = false;
+								break;
+							case TerminalTokens.TokenNameEQUAL:
+								if (isRegion) {
+									getRegionValue = true;
+								}
+								break;
+							case TerminalTokens.TokenNameStringLiteral:
+							case TerminalTokens.TokenNameSingleQuoteStringLiteral:
+								if (getRegionValue) {
+									String regionStr = commentScanner.getCurrentTokenString();
+									regionStr = stripQuotes(regionStr);
+									if (START.equals(attribute) &&  regionStr.equals(region)) {
+										insideRegion = true;
+										regionStarted = true;
+									}
+									if (END.equals(attribute)) {
+										if (regionStr.equals(region)) {
+											insideRegion = false;
+										}
+										stack.removeFirst();
+									}
+									if (!END.equals(attribute) && insideRegion) {
+										stack.addFirst(attribute);
+									}
+									attribute = null;
+									getRegionValue = false;
+								}
+								break;
+							default :
+								atTokenStarted = false;
+								isRegion = false;
+								break;
+
+						}
+					}
+					if (END.equals(attribute) && insideRegion) {
+						stack.removeFirst();
+						if (stack.size() == 0) {
+							insideRegion = false;
+						}
+					}
+					if (insideRegion) {
+						if (commentStr.stripLeading().startsWith("@start") && count++ == 0) { //$NON-NLS-1$
+							containsRegionStartSnippetTags = true;
+							snippetString = snippetString + commentLine.substring(0, indexOfLastComment) + System.lineSeparator();
+						}
+					}
+				}
+				if (insideRegion && !containsRegionStartSnippetTags) {
+					snippetString = snippetString + snippetScanner.getCurrentTokenString();
+				}
+				if (containsRegionStartSnippetTags) {
+					containsRegionStartSnippetTags = false;
+				}
+			} catch (InvalidInputException e) {
+				e.printStackTrace();
+			}
+
+		}
+		return snippetString;
+	}
+
+	private boolean isProperties(Map<String, String> snippetAttributes) {
+		if (snippetAttributes.size()==0)
+			return false;
+		for (Map.Entry<String, String> entry : snippetAttributes.entrySet()) {
+		    String key = entry.getKey();
+		    String value = entry.getValue();
+		    if(key.equals("lang") && value.equals("properties")) { //$NON-NLS-1$ //$NON-NLS-2$
+		    	return true;
+		    }
+		}
+		return false;
+	}
+
+	private boolean hasID(Map<String, String> snippetAttributes) {
+		if (snippetAttributes.size()==0)
+			return false;
+		for (String key: snippetAttributes.keySet()) {
+			   if(key.equals("id")) { //$NON-NLS-1$
+			    	return true;
+			    }
+		}
+		return false;
+	}
+	private String getID(Map<String, String> snippetAttributes) {
+		for (Map.Entry<String, String> entry : snippetAttributes.entrySet()) {
+		    String key = entry.getKey();
+		    String value = entry.getValue();
+		    if(key.equals("id") ) { //$NON-NLS-1$
+		    	return value;
+		    }
+		}
+		return ""; //$NON-NLS-1$
+	}
+
+	private boolean parseTillColon(Map<String, String> snippetAttributes) {
+		boolean isValid =  true;
+		boolean colonTokenFound = false;
+		int token;
+		String key = null;
+		boolean lookForValue = false;
+		while (this.index < this.scanner.eofPosition) {
+			token = readTokenSafely();
+			switch(token) {
+				case TerminalTokens.TokenNameWHITESPACE :
+					if (containsNewLine(this.scanner.getCurrentTokenString())) {
+						consumeToken();
+						if (this.index < this.scanner.eofPosition) {
+							token = readTokenSafely();
+							if (token == TerminalTokens.TokenNameMULTIPLY) {
+								consumeToken();
+							} else {
+								isValid = false;
+							}
+						} else {
+							isValid = false;
+						}
+					} else {
+						consumeToken();
+					}
+					break;
+				case TerminalTokens.TokenNameCOLON :
+					consumeToken();
+					colonTokenFound = true;
+					break;
+				case TerminalTokens.TokenNameclass:
+					if(lookForValue == false) {
+						isValid = false;
+					}
+					break;
+
+				case TerminalTokens.TokenNameStringLiteral:
+				case TerminalTokens.TokenNameIdentifier: // name and equal can come for attribute
+					String isFile = this.scanner.getCurrentTokenString();
+					if(isFile.equals("file") && lookForValue == false) { //$NON-NLS-1$
+						isValid = false;
+						break;
+					}
+					consumeToken();
+					if (key == null)
+						key = this.scanner.getCurrentTokenString();
+					if (lookForValue && key != null) {
+						String value = this.scanner.getCurrentTokenString();
+						snippetAttributes.put(key,
+								token == TerminalTokens.TokenNameStringLiteral ? value.substring(1, value.length() - 1)
+										: value);
+						lookForValue = false;
+						key = null;
+					}
+
+				 	break;
+				case TerminalTokens.TokenNameEQUAL :
+					consumeToken();
+					lookForValue=true;
+					break;
+				case TerminalTokens.TokenNameERROR:
+					String currentTokenString = this.scanner.getCurrentTokenString();
+					if(currentTokenString.length()> 1 && currentTokenString.charAt(0) =='\'' && currentTokenString.charAt(currentTokenString.length()-1) =='\'') {
+						if (lookForValue && key != null) {
+							String value = this.scanner.getCurrentTokenString();
+							snippetAttributes.put(key, value.substring(1, value.length() - 1));
+							lookForValue = false;
+							key = null;
+							break;
+						}
+					}
+					if (this.scanner.currentCharacter == '"') {
+						if (!lookForValue)
+							isValid = false;
+					}
+					consumeToken();
+
+					break;
+
+				default :
+					isValid = false;
+					break;
+			}
+			if (colonTokenFound || !isValid) {
+				break;
+			}
+		}
+		if (colonTokenFound) {
+			isValid = true;
+		}
+		return isValid;
+	}
+
+
+	public int indexOfLastSingleComment(String tokenString, int last) {
+		int indexOfLastCom = 0;
+		int temp = -1;
+		String tempString = tokenString;
+		for (int i = 0; i < last; ++i) {
+			temp = tempString.indexOf(SINGLE_LINE_COMMENT);
+			if (temp == -1) {
+				indexOfLastCom = 0;
+				break;
+			}
+			tempString = tempString.substring(++temp);
+			indexOfLastCom += temp;
+		}
+		return --indexOfLastCom;
+	}
+
+
+	private boolean handleCommentLineForCurrentLine(String tokenString) {
+		boolean handle = true;
+		if (tokenString != null) {
+			String processed= tokenString.trim();
+			if (processed.endsWith(":")) { //$NON-NLS-1$
+				handle = false;
+			}
+		}
+		return handle;
+	}
+
+
+	protected int getNumberOfSingleLineCommentInSnippetTag(String tokenString) {
+		if (tokenString != null) {
+			String tokenStringStripped = tokenString.stripLeading();
+			Scanner slScanner = new JavadocScanner(true, true, false/* nls */, this.scanner.sourceLevel,
+					this.scanner.complianceLevel, null/* taskTags */, null/* taskPriorities */,
+					false/* taskCaseSensitive */, false, true, true);
+			slScanner.setSource(tokenStringStripped.toCharArray());
+			while (true) {
+				try {
+					int tokenType = slScanner.getNextToken();
+					if (tokenType == TokenNameEOF)
+						break;
+					switch (tokenType) {
+						case TerminalTokens.TokenNameCOMMENT_LINE:
+							return 1 + getNumberOfSingleLineCommentInSnippetTag(tokenStringStripped
+									.substring(2 + tokenStringStripped.indexOf(SINGLE_LINE_COMMENT)));
+					}
+				} catch (InvalidInputException e) {
+					// do nothing
+				}
+			}
+		}
+		return 0;
+	}
+
+	protected Object parseSnippetInlineTags(String tokenString, Object snippetTag, Scanner sScanner) {
+		int commentStart = sScanner.getCurrentTokenStartPosition();
+		Object inlineTag = null;
+		final String REPLACE = "replace"; //$NON-NLS-1$
+		final String HIGHLIGHT = "highlight"; //$NON-NLS-1$
+		final String SUBSTRING = "substring"; //$NON-NLS-1$
+		final String REGEX = "regex"; //$NON-NLS-1$
+		final String TYPE = "type"; //$NON-NLS-1$
+		final String REPLACEMENT = "replacement"; //$NON-NLS-1$
+		final String REGION = "region"; //$NON-NLS-1$
+		final String END = "end"; //$NON-NLS-1$
+		final String LINK = "link"; //$NON-NLS-1$
+		final String TARGET = "target"; //$NON-NLS-1$
+		boolean regionClosed = false;
+		int initialTagCount = this.nonRegionTagCount;
+		List<Object> inlineTags= new ArrayList<>();
+		boolean ignoreLink = false;
+		if (sScanner != this.scanner) {
+			ignoreLink = true;
+		}
+		try {
+			if (tokenString != null
+					&& tokenString.length() > 2
+					&& tokenString.startsWith(SINGLE_LINE_COMMENT)) {
+				String tobeTokenized = tokenString.substring(2);
+				Scanner slScanner = new JavadocScanner(false, false, false/* nls */, sScanner.sourceLevel, sScanner.complianceLevel,
+						null/* taskTags */, null/* taskPriorities */, false/* taskCaseSensitive */, false, true, true);
+				slScanner.setSource(tobeTokenized.toCharArray());
+				boolean atTokenStarted= false;
+				int atTokenPos = -1;
+				boolean firstTagProcessed = false;
+				while (true) {
+					try {
+						int tokenType = slScanner.getNextToken();
+						if (tokenType == TokenNameEOF)
+							break;
+						mainSwitch : switch (tokenType) {
+							case TerminalTokens.TokenNameAT :
+								atTokenStarted = true;
+								atTokenPos = slScanner.getCurrentTokenStartPosition();
+								break;
+							case TerminalTokens.TokenNameIdentifier :
+								if(atTokenStarted==false) //invalid snippet inline, treat it like text
+									return null;
+								if (atTokenStarted) {
+									int curPos= slScanner.getCurrentTokenStartPosition();
+									if (curPos != atTokenPos+1 && !firstTagProcessed) {
+										return inlineTag;
+									}
+									String snippetDecorator = slScanner.getCurrentTokenString();
+									int tokenStart= commentStart + slScanner.getCurrentTokenStartPosition()-1;
+									int tokenEnd= commentStart + slScanner.getCurrentTokenEndPosition();
+									String newTagName= null;
+									switch(snippetDecorator) {
+										case  HIGHLIGHT :
+											tokenStart= commentStart + 1 + slScanner.getCurrentTokenStartPosition();
+											tokenEnd= tokenStart + 10;
+											newTagName = '@' + HIGHLIGHT;
+											Map<String, Object> map = new HashMap<>();
+											boolean breakToMainSwitch = false;
+											boolean createTag = false;
+											String attribute = null;
+											String value = null;
+											boolean processValue = false;
+											boolean createRegion = false;
+											String regionName = null;
+											while (true) {
+												tokenType = slScanner.getNextToken();
+												switch (tokenType) {
+													case TokenNameEOF:
+														createTag = true;
+														break;
+													case TerminalTokens.TokenNameAT:
+														if (!processValue) {
+															breakToMainSwitch = true;
+															createTag = true;
+														}
+														processValue= false;
+														break;
+													case TerminalTokens.TokenNameCOLON:
+														tokenType = slScanner.getNextToken();
+														if (tokenType == TokenNameEOF) {
+															break;
+														} else {
+															return inlineTag;
+														}
+													case TerminalTokens.TokenNameIdentifier:
+														if (processValue) {
+															value = slScanner.getCurrentTokenString();
+															if (REGION.equals(attribute)) {
+																regionName = value;
+															} else if (map.get(attribute) == null) {
+																map.put(attribute, value);
+																if ((attribute.equals(SUBSTRING) && (map.get(REGEX) != null))
+																		|| (attribute.equals(REGEX) && (map.get(SUBSTRING) != null))) {
+																	reportRegexSubstringTogether(snippetTag);
+																	return inlineTag;
+																}
+															}
+															processValue= false;
+															attribute = null;
+														} else {
+															attribute = slScanner.getCurrentTokenString();
+															switch(attribute) {
+																case  SUBSTRING :
+																case  REGEX :
+																case  TYPE :
+																	break;
+																case  REGION :
+																	createRegion = true;
+																	setRegionPosition(slScanner.currentPosition);
+																	break;
+																default :
+																	break;
+															}
+														}
+														break;
+													case TerminalTokens.TokenNameEQUAL:
+														if (attribute != null) {
+															processValue = true;
+														}
+														break;
+													case TerminalTokens.TokenNameStringLiteral:
+													case TerminalTokens.TokenNameSingleQuoteStringLiteral:
+														if (processValue) {
+															value = slScanner.getCurrentTokenString();
+															value = stripQuotes(value);
+															if (REGION.equals(attribute)) {
+																regionName = value;
+															} else if (map.get(attribute) == null) {
+																map.put(attribute, value);
+																if ((attribute.equals(SUBSTRING) && (map.get(REGEX) != null))
+																		|| (attribute.equals(REGEX) && (map.get(SUBSTRING) != null))) {
+																	reportRegexSubstringTogether(snippetTag);
+																	return inlineTag;
+																}
+															}
+															processValue= false;
+															attribute = null;
+														}
+														break;
+												}
+												if (createTag) {
+													break;
+												}
+												if (breakToMainSwitch)
+													break mainSwitch;
+											}
+											tokenEnd = commentStart + 1 + slScanner.getCurrentTokenEndPosition();
+											inlineTag = createSnippetInnerTag(newTagName, tokenStart, tokenEnd);
+											addTagProperties(inlineTag, map, ++this.inlineTagCount);
+											if (createRegion) {
+												List<Object> tags = new ArrayList<>();
+												tags.add(inlineTag);
+												inlineTag = createSnippetRegion(regionName, tags, snippetTag, false, false);
+											} else {
+												this.nonRegionTagCount++;
+											}
+											inlineTags.add(inlineTag);
+											if (!firstTagProcessed) {
+												firstTagProcessed = true;
+											}
+											break;
+										case REPLACE:
+											tokenStart= commentStart + 1 + slScanner.getCurrentTokenStartPosition();
+											tokenEnd= tokenStart + 8;
+											newTagName = '@' + REPLACE;
+											map = new HashMap<>();
+											breakToMainSwitch = false;
+											createTag = false;
+											attribute = null;
+											value = null;
+											processValue = false;
+											boolean hasReplacementStr = false;
+											createRegion = false;
+											regionName = null;
+											while (true) {
+												tokenType = slScanner.getNextToken();
+												switch (tokenType) {
+													case TokenNameEOF:
+														createTag = true;
+														break;
+													case TerminalTokens.TokenNameAT:
+														if (!processValue) {
+															breakToMainSwitch = true;
+															createTag = true;
+														}
+														processValue= false;
+														break;
+													case TerminalTokens.TokenNameCOLON:
+														tokenType = slScanner.getNextToken();
+														if (tokenType == TokenNameEOF) {
+															break;
+														} else {
+															return inlineTag;
+														}
+													case TerminalTokens.TokenNameIdentifier:
+														if (processValue) {
+															value = slScanner.getCurrentTokenString();
+															if (REGION.equals(attribute)) {
+																regionName = value;
+															} else if (map.get(attribute) == null) {
+																if (attribute.equals(REPLACEMENT)) {
+																	hasReplacementStr = true;
+																}
+																map.put(attribute, value);
+																if ((attribute.equals(SUBSTRING) && (map.get(REGEX) != null))
+																		|| (attribute.equals(REGEX) && (map.get(SUBSTRING) != null))) {
+																	reportRegexSubstringTogether(snippetTag);
+																	return inlineTag;
+																}
+															}
+															processValue= false;
+															attribute = null;
+														} else {
+															attribute = slScanner.getCurrentTokenString();
+															switch(attribute) {
+																case  SUBSTRING :
+																case  REGEX :
+																case  REPLACEMENT :
+																	break;
+																case  REGION :
+																	createRegion = true;
+																	setRegionPosition(slScanner.currentPosition);
+																	break;
+																default :
+																	break;
+															}
+														}
+														break;
+													case TerminalTokens.TokenNameEQUAL:
+														if (attribute != null) {
+															processValue = true;
+														}
+														break;
+													case TerminalTokens.TokenNameStringLiteral:
+													case TerminalTokens.TokenNameSingleQuoteStringLiteral:
+														if (processValue) {
+															value = slScanner.getCurrentTokenString();
+															value = stripQuotes(value);
+															if (REGION.equals(attribute)) {
+																regionName = value;
+															} else if (map.get(attribute) == null) {
+																if (attribute.equals(REPLACEMENT)) {
+																	hasReplacementStr = true;
+																}
+																map.put(attribute, value);
+																if ((attribute.equals(SUBSTRING) && (map.get(REGEX) != null))
+																		|| (attribute.equals(REGEX) && (map.get(SUBSTRING) != null))) {
+																	reportRegexSubstringTogether(snippetTag);
+																	return inlineTag;
+																}
+															}
+															processValue= false;
+															attribute = null;
+														}
+														break;
+												}
+												if (createTag) {
+													break;
+												}
+												if (breakToMainSwitch)
+													break mainSwitch;
+											}
+											if (!hasReplacementStr) {
+												return inlineTag;
+											}
+											tokenEnd = commentStart + 1 + slScanner.getCurrentTokenEndPosition();
+											inlineTag = createSnippetInnerTag(newTagName, tokenStart, tokenEnd);
+											addTagProperties(inlineTag, map, ++this.inlineTagCount);
+											if (createRegion) {
+												List<Object> tags = new ArrayList<>();
+												tags.add(inlineTag);
+												inlineTag = createSnippetRegion(regionName, tags, snippetTag, false, false);
+											} else {
+												this.nonRegionTagCount++;
+											}
+											inlineTags.add(inlineTag);
+											if (!firstTagProcessed) {
+												firstTagProcessed = true;
+											}
+											break;
+										case LINK :
+											tokenStart= commentStart + 1 + slScanner.getCurrentTokenStartPosition();
+											tokenEnd= tokenStart + 4;
+											newTagName = '@' + LINK;
+											map = new HashMap<>();
+											breakToMainSwitch = false;
+											createTag = false;
+											attribute = null;
+											value = null;
+											processValue = false;
+											boolean hasTarget = false;
+											Object type = null;
+											createRegion = false;
+											regionName = null;
+											while (true) {
+												tokenType = slScanner.getNextToken();
+												switch (tokenType) {
+													case TokenNameEOF:
+														createTag = true;
+														break;
+													case TerminalTokens.TokenNameAT:
+														if (!processValue) {
+															breakToMainSwitch = true;
+															createTag = true;
+														}
+														processValue= false;
+														break;
+													case TerminalTokens.TokenNameCOLON:
+														tokenType = slScanner.getNextToken();
+														if (tokenType == TokenNameEOF) {
+															break;
+														} else {
+															return inlineTag;
+														}
+													case TerminalTokens.TokenNameIdentifier:
+														if (processValue) {
+															value = slScanner.getCurrentTokenString();
+															if (map.get(attribute) == null) {
+																if (REGION.equals(attribute)) {
+																	regionName = value;
+																} else if (TARGET.equals(attribute)) {
+																	String originalTokenString = sScanner.getCurrentTokenString();
+																	int offset = originalTokenString.lastIndexOf(tokenString);
+																	if(offset == -1 ) {
+																		offset = 1- tokenString.length(); // for # converted to // current position at end
+																	}
+																	if (!ignoreLink) {
+																		type = parseLinkReference(slScanner.getCurrentTokenStartPosition() + offset, value, sScanner);
+																	}
+																	if (type != null) {
+																		map.put(attribute, type);
+																		hasTarget = true;
+																	}
+																} else {
+																	map.put(attribute, value);
+																	if ((attribute.equals(SUBSTRING) && (map.get(REGEX) != null))
+																			|| (attribute.equals(REGEX) && (map.get(SUBSTRING) != null))) {
+																		reportRegexSubstringTogether(snippetTag);
+																		return inlineTag;
+																	}
+																}
+															}
+															processValue= false;
+															attribute = null;
+														} else {
+															attribute = slScanner.getCurrentTokenString();
+															switch(attribute) {
+																case  SUBSTRING :
+																case  REGEX :
+																case  TYPE :
+																case  TARGET :
+																	break;
+																case  REGION :
+																	createRegion = true;
+																	setRegionPosition(slScanner.currentPosition);
+																	break;
+																default :
+																	break;
+															}
+														}
+														break;
+													case TerminalTokens.TokenNameEQUAL:
+														if (attribute != null) {
+															processValue = true;
+														}
+														break;
+													case TerminalTokens.TokenNameStringLiteral:
+													case TerminalTokens.TokenNameSingleQuoteStringLiteral:
+														if (processValue) {
+															value = slScanner.getCurrentTokenString();
+															if (map.get(attribute) == null) {
+																if (REGION.equals(attribute)) {
+																	value = stripQuotes(value);
+																	regionName = value;
+																} else if (TARGET.equals(attribute)) {
+																	String originalTokenString = sScanner.getCurrentTokenString();
+																	int offset = originalTokenString.lastIndexOf(tokenString);
+																	if(offset == -1 ) {
+																		offset = 1- tokenString.length(); // for # converted to // current position at end
+																	}
+																	if (!ignoreLink) {
+																		type = parseLinkReference(slScanner.getCurrentTokenStartPosition() + offset, value, sScanner);
+																	}
+																	if (type != null) {
+																		map.put(attribute, type);
+																		hasTarget = true;
+																	}
+																} else {
+																	value = stripQuotes(value);
+																	map.put(attribute, value);
+																	if ((attribute.equals(SUBSTRING) && (map.get(REGEX) != null))
+																			|| (attribute.equals(REGEX) && (map.get(SUBSTRING) != null))) {
+																		reportRegexSubstringTogether(snippetTag);
+																		return inlineTag;
+																	}
+																}
+															}
+															processValue= false;
+															attribute = null;
+														}
+														break;
+												}
+												if (createTag) {
+													break;
+												}
+												if (breakToMainSwitch)
+													break mainSwitch;
+											}
+											tokenEnd = commentStart + 1 + slScanner.getCurrentTokenEndPosition();
+											if (hasTarget) {
+												inlineTag = createSnippetInnerTag(newTagName, tokenStart, tokenEnd);
+												addTagProperties(inlineTag, map, ++this.inlineTagCount);
+												if (createRegion) {
+													List<Object> tags = new ArrayList<>();
+													tags.add(inlineTag);
+													inlineTag = createSnippetRegion(regionName, tags, snippetTag, false, false);
+												} else {
+													this.nonRegionTagCount++;
+												}
+												inlineTags.add(inlineTag);
+												if (!firstTagProcessed) {
+													firstTagProcessed = true;
+												}
+											}
+											break;
+										case  END :
+											boolean closeRegion = false;
+											regionName = null;
+											processValue = false;
+											attribute = null;
+											breakToMainSwitch = false;
+											while (true) {
+												tokenType = slScanner.getNextToken();
+												switch (tokenType) {
+													case TokenNameEOF:
+														closeRegion = true;
+														break;
+													case TerminalTokens.TokenNameAT:
+														if (!processValue) {
+															breakToMainSwitch = true;
+															closeRegion = true;
+														}
+														processValue= false;
+														break;
+													case TerminalTokens.TokenNameCOLON:
+														tokenType = slScanner.getNextToken();
+														if (tokenType == TokenNameEOF) {
+															break;
+														} else {
+															return inlineTag;
+														}
+													case TerminalTokens.TokenNameIdentifier:
+														if (processValue && REGION.equals(attribute)) {
+															regionName = slScanner.getCurrentTokenString();
+															processValue= false;
+															attribute = null;
+														} else {
+															attribute = slScanner.getCurrentTokenString();
+															switch(attribute) {
+																case  REGION :
+																	setRegionPosition(slScanner.currentPosition);
+																	break;
+																default :
+																	break;
+															}
+														}
+														break;
+													case TerminalTokens.TokenNameEQUAL:
+														if (attribute != null) {
+															processValue = true;
+														}
+														break;
+													case TerminalTokens.TokenNameStringLiteral:
+													case TerminalTokens.TokenNameSingleQuoteStringLiteral:
+														if (processValue && REGION.equals(attribute)) {
+															regionName = slScanner.getCurrentTokenString();
+															regionName = stripQuotes(regionName);
+														}
+														processValue= false;
+														attribute = null;
+														break;
+												}
+												if (closeRegion) {
+													break;
+												}
+											}
+											if (closeRegion) {
+												tokenEnd = commentStart + 1 + slScanner.getCurrentTokenEndPosition();
+												this.closeJavaDocRegion(regionName, snippetTag, tokenEnd);
+												regionClosed = true;
+												if (!firstTagProcessed) {
+													firstTagProcessed = true;
+												}
+											}
+											if (breakToMainSwitch) {
+												break mainSwitch;
+											}
+											break;
+										default :
+											return inlineTag;
+									}
+								}
+								break;
+							default:
+								return inlineTag;//if at token not started then invalid
+						}
+
+					} catch (InvalidInputException e) {
+						// do nothing
+					}
+				}
+			}
+		}
+		finally {
+			if (inlineTags.size() > 1
+					|| (initialTagCount > 0 && inlineTags.size() > 0)) {
+				inlineTag = createSnippetRegion(null, inlineTags, snippetTag, true, (initialTagCount > 0) ? true : false);
+			} else if (inlineTags.size() == 1) {
+				inlineTag = inlineTags.get(0);
+			}
+		}
+		if (regionClosed && inlineTag == null) {
+			return snippetTag;
+		}
+		if (inlineTags.size() == 0 && inlineTag == null && ignoreLink) {
+			return snippetTag;
+		}
+		return inlineTag;
+	}
+
+	private String stripQuotes(String str) {
+		if (str == null || str.length() <= 2) {
+			return str;
+		}
+		String finalStr= str;
+		int lastIndex = finalStr.length() - 1;
+		if ((finalStr.charAt(0) =='"' && finalStr.charAt(lastIndex)=='"')
+				||(finalStr.charAt(0) =='\'' && finalStr.charAt(lastIndex)=='\'')) {
+			finalStr = finalStr.substring(1, finalStr.length()-1);
+		}
+		return finalStr;
+	}
+	private Object parseLinkReference(int curPosition, String value, Scanner sScanner) {
+		Object typeRef = null;
+		Object reference = null;
+		int indexx = this.index;
+		int oldCurrentPosition = sScanner.currentPosition;
+		int oldStartPosition = sScanner.startPosition;
+		char c = value.charAt(0);
+		int additionalIndex = 2;
+		if (c == '"' || c== '\'' ) {
+			additionalIndex += 1;
+		}
+		sScanner.currentPosition = sScanner.getCurrentTokenStartPosition() + curPosition  + additionalIndex;
+		int allowedLength = sScanner.getCurrentTokenStartPosition() + curPosition + value.length();
+		this.index = sScanner.startPosition;
+		int oldToken = this.currentTokenType;
+		this.currentTokenType = -1;
+		boolean tokenizeWhiteSpaces = this.scanner.tokenizeWhiteSpace;
+		this.scanner.tokenizeWhiteSpace = false;
+		try {
+			while (this.scanner.currentPosition < allowedLength) {
+				int token = readTokenSafely();
+				this.scanner.tokenizeWhiteSpace = true;
+				switch (token) {
+					case TerminalTokens.TokenNameERROR :
+						consumeToken();
+						if (this.scanner.currentCharacter == '#') { // @see ...#member
+							reference = parseMember(typeRef, true);
+						}
+						break;
+					case TerminalTokens.TokenNameIdentifier :
+						typeRef = parseQualifiedName(true, true);
+						break;
+					default :
+						return null;
+				}
+
+			}
+		} catch (InvalidInputException ex) {
+			typeRef= null;
+		}
+		finally {
+			sScanner.currentPosition = oldCurrentPosition;
+			sScanner.startPosition = oldStartPosition;
+			this.index = indexx;
+			this.currentTokenType = oldToken;
+			sScanner.tokenizeWhiteSpace = tokenizeWhiteSpaces;
+		}
+		if (reference != null) {
+			typeRef = reference;
+		}
+		return typeRef;
+	}
+
+	private boolean containsNewLine(String str) {
+		boolean consider = false;
+		if(str != null
+				&& (str.contains(System.lineSeparator())
+						|| str.indexOf('\n') != -1)) {
+			consider = true;
+		}
+		return consider;
+	}
+
 	/*
 	 * Parse tag declaration
 	 */
@@ -1598,10 +3073,48 @@ public abstract class AbstractCommentParser implements JavadocTagConstants {
 		// do not store text by default
 	}
 
+	protected void pushSnippetText(char[] text, int start, int end, boolean addNewLine, Object snippetTag) {
+		// do not store text by default
+	}
+
+	protected abstract void closeJavaDocRegion(String name, Object snippetTag, int end);
+	protected abstract boolean areRegionsClosed();
+
+	protected void pushExternalSnippetText(char[] text, int start, int end, boolean addNewLine, Object snippetTag) {
+		// do not store text by default
+	}
+
+	protected abstract Object createSnippetTag();
+
+	protected abstract Object createSnippetInnerTag(String tagName, int start, int end);
+
+	protected abstract Object createSnippetRegion(String name, List<Object> tags, Object snippetTag, boolean isDummyRegion, boolean considerPrevTag);
+
+	protected abstract void addTagProperties(Object Tag, Map<String, Object> map, int tagCount);
+
+	protected abstract void addSnippetInnerTag(Object tag, Object snippetTag);
+
+	protected abstract void setSnippetError(Object tag, String value);
+
+	protected abstract void setSnippetIsValid(Object tag, boolean value);
+
+	protected abstract void setSnippetID(Object tag, String value);
+
 	/*
 	 * Push a throws type ref in ast node stack.
 	 */
 	protected abstract boolean pushThrowName(Object typeRef);
+
+	protected abstract void setRegionPosition(int currentPosition);
+
+
+	private void reportRegexSubstringTogether(Object snippetTag) {
+		if(this.reportProblems) {
+			this.sourceParser.problemReporter().javadocInvalidSnippetRegexSubstringTogether(this.lineEnd -this.scanner.getCurrentTokenString().length() +2, this.lineEnd);
+		}
+		this.setSnippetIsValid(snippetTag, false);
+		this.setSnippetError(snippetTag, "Regex and substring together"); //$NON-NLS-1$
+	}
 
 	/*
 	 * Read current character and move index position.
@@ -1944,4 +3457,17 @@ public abstract class AbstractCommentParser implements JavadocTagConstants {
 			this.complianceLevel = this.sourceParser.options.complianceLevel;
 		}
 	}
+
+	/**
+	 * @param projectPath Absolute path in local file system
+	 */
+	public void setProjectPath(String projectPath) {
+		this.projectPath = projectPath;
+	}
+
+	public void setProjectSrcClasspath(List path) {
+		this.srcClasspath = path;
+	}
+
+
 }

@@ -121,9 +121,22 @@ public FlowInfo analyseCode(BlockScope currentScope, FlowContext flowContext,
 		}
 		this.falseInitStateIndex = currentScope.methodScope().recordInitializationStates(falseFlowInfo);
 		this.condition.updateFlowOnBooleanResult(falseFlowInfo, false);
+
+		EqualExpression simpleCondition = this.condition instanceof EqualExpression ? (EqualExpression) this.condition : null;
+		boolean doSyntacticAnalysisForFalseBranch = compilerOptions.enableSyntacticNullAnalysisForFields && simpleCondition != null;
+		if (doSyntacticAnalysisForFalseBranch) {
+			simpleCondition.syntacticFieldAnalysisForFalseBranch(flowInfo, flowContext);
+		}
 		falseFlowInfo = this.valueIfFalse.analyseCode(currentScope, flowContext, falseFlowInfo);
 		this.valueIfFalse.checkNPEbyUnboxing(currentScope, flowContext, falseFlowInfo);
 
+		// may need to fetch this null status before expireNullCheckedFieldInfo():
+		this.ifFalseNullStatus = -1;
+		if (doSyntacticAnalysisForFalseBranch) {
+			this.ifFalseNullStatus = this.valueIfFalse.nullStatus(falseFlowInfo, flowContext);
+			// wipe information that was meant only for valueIfFalse:
+			flowContext.expireNullCheckedFieldInfo();
+		}
 		flowContext.conditionalLevel--;
 
 		// merge if-true & if-false initializations
@@ -209,7 +222,9 @@ public FlowInfo analyseCode(BlockScope currentScope, FlowContext flowContext,
 		if (this.ifTrueNullStatus == -1) { // has this status been pre-computed?
 			this.ifTrueNullStatus = this.valueIfTrue.nullStatus(trueBranchInfo, flowContext);
 		}
-		this.ifFalseNullStatus = this.valueIfFalse.nullStatus(falseBranchInfo, flowContext);
+		if (this.ifFalseNullStatus == -1) { // has this status been pre-computed?
+			this.ifFalseNullStatus = this.valueIfFalse.nullStatus(falseBranchInfo, flowContext);
+		}
 
 		if (this.ifTrueNullStatus == this.ifFalseNullStatus) {
 			this.nullStatus = this.ifTrueNullStatus;
@@ -490,14 +505,14 @@ public FlowInfo analyseCode(BlockScope currentScope, FlowContext flowContext,
 		if (!this.condition.containsPatternVariable()) {
 			return;
 		}
-		if (this.condition.getPatternVariableIntroduced() != null) {
-			char[] name = this.condition.getPatternVariableIntroduced().name;
-			LocalDeclaration localVar = this.valueIfTrue.getPatternVariableIntroduced();
+		if (this.condition.getPatternVariable() != null) {
+			char[] name = this.condition.getPatternVariable().name;
+			LocalDeclaration localVar = this.valueIfTrue.getPatternVariable();
 			if (localVar != null && CharOperation.equals(name, localVar.name)) {
 					scope.problemReporter().illegalRedeclarationOfPatternVar(localVar.binding, localVar);
 					return;
 			}
-			localVar = this.valueIfFalse.getPatternVariableIntroduced();
+			localVar = this.valueIfFalse.getPatternVariable();
 			if (localVar != null && CharOperation.equals(name, localVar.name)) {
 				scope.problemReporter().illegalRedeclarationOfPatternVar(localVar.binding, localVar);
 				return;
@@ -709,9 +724,9 @@ public FlowInfo analyseCode(BlockScope currentScope, FlowContext flowContext,
 			// >= 1.5 : LUB(operand types) must exist
 			TypeBinding commonType = null;
 			if (valueIfTrueType == TypeBinding.NULL) {
-				commonType = valueIfFalseType;
+				commonType = valueIfFalseType.withoutToplevelNullAnnotation(); // null on other branch invalidates any @NonNull
 			} else if (valueIfFalseType == TypeBinding.NULL) {
-				commonType = valueIfTrueType;
+				commonType = valueIfTrueType.withoutToplevelNullAnnotation(); // null on other branch invalidates any @NonNull
 			} else {
 				commonType = scope.lowerUpperBound(new TypeBinding[] { valueIfTrueType, valueIfFalseType });
 			}

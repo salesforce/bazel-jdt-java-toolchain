@@ -422,6 +422,33 @@ public final class JavacOptions {
   }
 
   /**
+ * Go through the list of javac options and collect the value of the <b>last</b>
+ * option found.
+ * <p>
+ * The reason we go with last is that we assume it's the most specific.
+ * </p>
+ *
+ * @param javacOptions
+ * @param optionName
+ * @return the option value
+ */
+public static String getJavacOptionValue(List<String> javacOptions, String optionName) {
+	String value = null; // last one wins
+	for (int i = 0; i < javacOptions.size(); i++) {
+		String option = javacOptions.get(i);
+		if (option.startsWith(optionName)) {
+			int separatorPos = option.indexOf('=');
+			if (separatorPos == -1 && javacOptions.size() > i + 1) {
+				value = javacOptions.get(i + 1);
+			} else {
+				value = option.substring(separatorPos + 1).trim();
+			}
+		}
+	}
+	return value;
+}
+
+/**
    * Outputs a reasonably normalized javac option list.
    *
    * @param javacopts the raw javac option list to cleanup

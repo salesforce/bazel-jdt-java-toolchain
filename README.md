@@ -12,7 +12,7 @@ Once this is completed, add this to your `.bazelrc`:
 build --extra_toolchains=@bazel_jdt_java_toolchain//jdt:all
 ```
 
-By default the `jdt_java_toolchain` is using `local_jdk` for compilation.
+By default the `jdt_java_toolchain` is using `rules_java` default for compilation.
 Please create your own `default_java_toolchain` if this doesn't work for your use case.
 
 Have a look at `jdt/BUILD` to see which JDKs are supported.

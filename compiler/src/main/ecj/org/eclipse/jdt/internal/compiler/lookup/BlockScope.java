@@ -586,6 +586,13 @@ public Binding getBinding(char[][] compoundName, int mask, InvocationSite invoca
 						CharOperation.subarray(compoundName, 0, currentIndex),
 						(ReferenceBinding) binding,
 						ProblemReasons.NotVisible);
+				if (packageBinding instanceof SplitPackageBinding) {
+					packageBinding = packageBinding.getVisibleFor(module(), false);
+					if (packageBinding instanceof SplitPackageBinding) {
+						problemReporter().conflictingPackagesFromModules((SplitPackageBinding) packageBinding, module(),
+								invocationSite.sourceStart(), invocationSite.sourceEnd());
+					}
+				}
 				break foundType;
 			}
 			packageBinding = (PackageBinding) binding;
@@ -921,9 +928,10 @@ public Object[] getEmulationPath(ReferenceBinding targetEnclosingType, boolean o
 		}
 	}
 	FieldBinding syntheticField = sourceType.getSyntheticField(targetEnclosingType, onlyExactMatch);
+	Object[] synEAoL = currentMethodScope.getSyntheticEnclosingArgumentOfLambda(targetEnclosingType);
 	if (syntheticField != null) {
 		if (currentMethodScope.isConstructorCall){
-			return BlockScope.NoEnclosingInstanceInConstructorCall;
+			return synEAoL != null ? synEAoL : BlockScope.NoEnclosingInstanceInConstructorCall;
 		}
 		return new Object[] { syntheticField };
 	}
@@ -935,7 +943,7 @@ public Object[] getEmulationPath(ReferenceBinding targetEnclosingType, boolean o
 		path[0] = ((NestedTypeBinding) sourceType).getSyntheticArgument(currentType, onlyExactMatch, currentMethodScope.isConstructorCall);
 	} else {
 		if (currentMethodScope.isConstructorCall){
-			return BlockScope.NoEnclosingInstanceInConstructorCall;
+			return synEAoL != null ? synEAoL : BlockScope.NoEnclosingInstanceInConstructorCall;
 		}
 		path[0] = sourceType.getSyntheticField(currentType, onlyExactMatch);
 	}

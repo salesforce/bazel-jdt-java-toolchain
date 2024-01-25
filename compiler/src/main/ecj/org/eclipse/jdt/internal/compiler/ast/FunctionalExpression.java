@@ -70,6 +70,7 @@ public abstract class FunctionalExpression extends Expression {
 	public boolean hasDescripterProblem;
 	public boolean isSerializable;
 	public int ordinal;
+	public char[] text;  // source representation of the FE - used in virgin copy construction
 
 	public FunctionalExpression(CompilationResult compilationResult) {
 		this.compilationResult = compilationResult;
@@ -241,10 +242,10 @@ public abstract class FunctionalExpression extends Expression {
 
 	static class VisibilityInspector extends TypeBindingVisitor {
 
-		private Scope scope;
-		private boolean shouldChatter;
+		private final Scope scope;
+		private final boolean shouldChatter;
         private boolean visible = true;
-		private FunctionalExpression expression;
+		private final FunctionalExpression expression;
 
 		public VisibilityInspector(FunctionalExpression expression, Scope scope, boolean shouldChatter) {
 			this.scope = scope;

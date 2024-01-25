@@ -14,7 +14,9 @@
 package org.eclipse.jdt.internal.compiler.parser.diagnose;
 
 import org.eclipse.jdt.core.compiler.CharOperation;
+import org.eclipse.jdt.internal.compiler.CompilationResult;
 import org.eclipse.jdt.internal.compiler.impl.CompilerOptions;
+import org.eclipse.jdt.internal.compiler.impl.ReferenceContext;
 import org.eclipse.jdt.internal.compiler.parser.ConflictedParser;
 import org.eclipse.jdt.internal.compiler.parser.Parser;
 import org.eclipse.jdt.internal.compiler.parser.ParserBasicInformation;
@@ -26,7 +28,7 @@ import org.eclipse.jdt.internal.compiler.util.Util;
 
 public class DiagnoseParser implements ParserBasicInformation, TerminalTokens, ConflictedParser {
 	private static final boolean DEBUG = false;
-	private boolean DEBUG_PARSECHECK = false;
+	private final boolean DEBUG_PARSECHECK = false;
 
 	private static final int STACK_INCREMENT = 256;
 
@@ -47,9 +49,9 @@ public class DiagnoseParser implements ParserBasicInformation, TerminalTokens, C
 	private static final int MAX_DISTANCE = 30;
 	private static final int MIN_DISTANCE = 3;
 
-	private CompilerOptions options;
+	private final CompilerOptions options;
 
-	private LexStream lexStream;
+	private final LexStream lexStream;
 	private int errorToken;
 	private int errorTokenStart;
 
@@ -83,11 +85,13 @@ public class DiagnoseParser implements ParserBasicInformation, TerminalTokens, C
 	int statePoolTop;
 	StateInfo[] statePool;
 
-	private Parser parser;
+	private final Parser parser;
 
-	private RecoveryScanner recoveryScanner;
+	private final RecoveryScanner recoveryScanner;
 
 	private boolean reportProblem;
+	private int deferredErrorStart;
+	private int deferredErrorEnd;
 
 	private static class RepairCandidate {
 		public int symbol;
@@ -189,8 +193,23 @@ public class DiagnoseParser implements ParserBasicInformation, TerminalTokens, C
 		return;
 	}
 
-
 	public void diagnoseParse(boolean record) {
+		try {
+			this.deferredErrorStart = this.deferredErrorEnd = -1;
+			diagnoseParse0(record);
+		} finally {
+			try (ProblemReporter problemReporter = this.problemReporter()) {
+				ReferenceContext referenceContext = problemReporter.referenceContext;
+				CompilationResult compilationResult = referenceContext != null ? referenceContext.compilationResult() : null;
+				if (compilationResult != null && !compilationResult.hasSyntaxError) {
+					reportMisplacedConstruct(this.deferredErrorStart, this.deferredErrorEnd, true);
+				}
+				this.deferredErrorStart = this.deferredErrorEnd = -1;
+			}
+		}
+	}
+
+	private void diagnoseParse0(boolean record) {
 		this.reportProblem = true;
 		boolean oldRecord = false;
 		if(this.recoveryScanner != null) {
@@ -387,9 +406,11 @@ public class DiagnoseParser implements ParserBasicInformation, TerminalTokens, C
 						return;
 					}
 
-					if(this.parser.problemReporter().options.maxProblemsPerUnit < this.parser.compilationUnit.compilationResult.problemCount) {
-						if(this.recoveryScanner == null || !this.recoveryScanner.record) return;
-						this.reportProblem = false;
+					try (ProblemReporter problemReporter = this.parser.problemReporter()) {
+						if(problemReporter.options.maxProblemsPerUnit < this.parser.compilationUnit.compilationResult.problemCount) {
+							if(this.recoveryScanner == null || !this.recoveryScanner.record) return;
+							this.reportProblem = false;
+						}
 					}
 
 					act = this.stack[this.stateStackTop];
@@ -2274,10 +2295,7 @@ public class DiagnoseParser implements ParserBasicInformation, TerminalTokens, C
 
 				if (scopeNameIndex != 0) {
 					if (insertedToken == TokenNameElidedSemicolonAndRightBrace) {
-						/* https://bugs.eclipse.org/bugs/show_bug.cgi?id=383046, we should never ever report the diagnostic, "Syntax error, insert ElidedSemicolonAndRightBraceto complete LambdaBody"
-						   as it is a synthetic token. Instead we should simply repair and move on. See how the regular Parser behaves at Parser.consumeElidedLeftBraceAndReturn and Parser.consumeExpression.
-						   See also: point (4) in https://bugs.eclipse.org/bugs/show_bug.cgi?id=380194#c15
-						*/
+						reportMisplacedConstruct(errorStart, errorEnd, false);
 						break;
 					}
 					if(this.reportProblem) problemReporter().parseErrorInsertToComplete(
@@ -2353,6 +2371,43 @@ public class DiagnoseParser implements ParserBasicInformation, TerminalTokens, C
 						name);
 				}
 				break;
+		}
+	}
+
+	private void reportMisplacedConstruct(int errorStart, int errorEnd, boolean reportImmediately) {
+		/* https://bugs.eclipse.org/bugs/show_bug.cgi?id=383046, we should be very careful about ever reporting the diagnostic,
+		   "Syntax error, insert ElidedSemicolonAndRightBrace to complete LambdaBody" as it is a synthetic token. Such a diagnostic
+		   is wasteful and confusing as it is not actionable by the programmer.
+
+		   More importantly, the insertion of this synthetic token is also "normal" part of the business of parsing lambdas.
+		   See how the regular Parser behaves at Parser.consumeElidedLeftBraceAndReturn and Parser.consumeExpression.
+		   See also: point (4) in https://bugs.eclipse.org/bugs/show_bug.cgi?id=380194#c15
+
+		   However, not surfacing ANY error may be invitation for trouble - sometimes the DiagnoseParser can skip over several tokens
+		   in the "broken" part of input and eagerly reach for a cleaner state of affairs - this may result in NO other diagnostics showing
+		   up whatsoever.
+
+		   See https://github.com/eclipse-jdt/eclipse.jdt.core/issues/367 and for a really egregious case,
+		   see https://bugs.eclipse.org/bugs/show_bug.cgi?id=553601#c0.
+
+		   The present fix attempts a low-tech solution to the problem. Rather than teach DiagnoseParser the sleight of hand that the
+		   normal parser performs in Parser.consumeElidedLeftBraceAndReturn and Parser.consumeExpression (and thereby make the insertion
+		   of ElidedSemicolonAndRightBrace a normal part of parsing rather than of recovery), we do three things now:
+
+		   (a) Defer reporting this error message till the very end. (b) Surface this error ONLY if there are no other syntax errors (so
+		   there is no false positive) (c) Opt for a general/bland message without speaking of synthetics.
+		   (Cf javac's ubiquitous "Syntax error: Illegal start of expression")
+		*/
+		if (!this.reportProblem || errorStart < 0 || errorEnd < 0)
+			return;
+
+		if (!reportImmediately) {
+			this.deferredErrorStart = errorStart;
+			this.deferredErrorEnd = errorEnd;
+		} else {
+			problemReporter().parseErrorMisplacedConstruct(
+				errorStart,
+				errorEnd);
 		}
 	}
 
@@ -2458,11 +2513,8 @@ public class DiagnoseParser implements ParserBasicInformation, TerminalTokens, C
 	            }
 	            if (scopeNameIndex != 0) {
 	            	if (insertedToken == TokenNameElidedSemicolonAndRightBrace) {
-						/* https://bugs.eclipse.org/bugs/show_bug.cgi?id=383046, we should never ever report the diagnostic, "Syntax error, insert ElidedSemicolonAndRightBraceto complete LambdaBody"
-						   as it is a synthetic token. Instead we should simply repair and move on. See how the regular Parser behaves at Parser.consumeElidedLeftBraceAndReturn and Parser.consumeExpression.
-						   See also: point (4) in https://bugs.eclipse.org/bugs/show_bug.cgi?id=380194#c15
-						*/
-						break;
+	            		reportMisplacedConstruct(errorStart, errorEnd, false);
+	            		break;
 					}
 	                if(this.reportProblem) problemReporter().parseErrorInsertToComplete(
 						errorStart,
@@ -2561,6 +2613,11 @@ public class DiagnoseParser implements ParserBasicInformation, TerminalTokens, C
 		   error. See that this is not a problem for the regular/normal parser.
 		*/
 		return (token == TokenNameLPAREN || token == TokenNameAT || (token == TokenNameLESS && !this.lexStream.awaitingColonColon()));
+	}
+
+	@Override
+	public boolean automatonWillShift(int token) {
+		return false; // Some day we will understand the world well enough, for now say no and deal with it (sigh)
 	}
 
 	@Override

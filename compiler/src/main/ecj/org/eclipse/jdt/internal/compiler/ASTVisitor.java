@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2021 IBM Corporation and others.
+ * Copyright (c) 2000, 2023 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -287,31 +287,17 @@ public abstract class ASTVisitor {
 		// do nothing by default
 	}
 	/**
-	 * @param annotation
-	 * @param scope
 	 * @since 3.1
 	 */
 	public void endVisit(MarkerAnnotation annotation, BlockScope scope) {
 		// do nothing by default
 	}
-	/**
-	 * @param annotation
-	 * @param scope
-	 */
 	public void endVisit(MarkerAnnotation annotation, ClassScope scope) {
 		// do nothing by default
 	}
-	/**
-	 * @param pair
-	 * @param scope
-	 */
 	public void endVisit(MemberValuePair pair, BlockScope scope) {
 		// do nothing by default
 	}
-	/**
-	 * @param pair
-	 * @param scope
-	 */
 	public void endVisit(MemberValuePair pair, ClassScope scope) {
 		// do nothing by default
 	}
@@ -325,8 +311,6 @@ public abstract class ASTVisitor {
 		// do nothing by default
 	}
 	/**
-	 * @param annotation
-	 * @param scope
 	 * @since 3.1
 	 */
 	public void endVisit(NormalAnnotation annotation, BlockScope scope) {
@@ -407,21 +391,18 @@ public abstract class ASTVisitor {
     		ClassScope scope) {
 		// do nothing by default
 	}
+	public void endVisit(RecordPattern recordPattern, BlockScope scope) {
+		// do nothing by default
+	}
 	public void endVisit(ReturnStatement returnStatement, BlockScope scope) {
 		// do nothing by default
 	}
 	/**
-	 * @param annotation
-	 * @param scope
 	 * @since 3.1
 	 */
 	public void endVisit(SingleMemberAnnotation annotation, BlockScope scope) {
 		// do nothing by default
 	}
-	/**
-	 * @param annotation
-	 * @param scope
-	 */
 	public void endVisit(SingleMemberAnnotation annotation, ClassScope scope) {
 		// do nothing by default
 	}
@@ -537,6 +518,9 @@ public abstract class ASTVisitor {
 	}
 	public void endVisit(RecordComponent recordComponent, BlockScope scope) {
 		// do nothing by default, keep traversing
+	}
+	public boolean visit(RecordPattern recordPattern, BlockScope scope) {
+		return true; // do nothing by default, keep traversing
 	}
 	public boolean visit(
     		AllocationExpression allocationExpression,
@@ -801,32 +785,20 @@ public abstract class ASTVisitor {
 		return true; // do nothing by default, keep traversing
 	}
 	/**
-	 * @param annotation
-	 * @param scope
 	 * @since 3.1
 	 */
 	public boolean visit(MarkerAnnotation annotation, BlockScope scope) {
 		return true;
 	}
-	/**
-	 * @param annotation
-	 * @param scope
-	 */
 	public boolean visit(MarkerAnnotation annotation, ClassScope scope) {
 		return true;
 	}
 	/**
-	 * @param pair
-	 * @param scope
 	 * @since 3.1
 	 */
 	public boolean visit(MemberValuePair pair, BlockScope scope) {
 		return true;
 	}
-	/**
-	 * @param pair
-	 * @param scope
-	 */
 	public boolean visit(MemberValuePair pair, ClassScope scope) {
 		return true;
 	}
@@ -842,17 +814,11 @@ public abstract class ASTVisitor {
 		return true; // do nothing by default, keep traversing
 	}
 	/**
-	 * @param annotation
-	 * @param scope
 	 * @since 3.1
 	 */
 	public boolean visit(NormalAnnotation annotation, BlockScope scope) {
 		return true;
 	}
-	/**
-	 * @param annotation
-	 * @param scope
-	 */
 	public boolean visit(NormalAnnotation annotation, ClassScope scope) {
 		return true;
 	}
@@ -932,17 +898,11 @@ public abstract class ASTVisitor {
 		return true; // do nothing by default, keep traversing
 	}
 	/**
-	 * @param annotation
-	 * @param scope
 	 * @since 3.1
 	 */
 	public boolean visit(SingleMemberAnnotation annotation, BlockScope scope) {
 		return true;
 	}
-	/**
-	 * @param annotation
-	 * @param scope
-	 */
 	public boolean visit(SingleMemberAnnotation annotation, ClassScope scope) {
 		return true;
 	}

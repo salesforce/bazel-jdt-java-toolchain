@@ -56,7 +56,7 @@ public class ReturnStatement extends Statement {
 	public SubRoutineStatement[] subroutines;
 	public LocalVariableBinding saveValueVariable;
 	public int initStateIndex = -1;
-	private boolean implicitReturn;
+	private final boolean implicitReturn;
 
 public ReturnStatement(Expression expression, int sourceStart, int sourceEnd) {
 	this(expression, sourceStart, sourceEnd, false);
@@ -153,6 +153,9 @@ public FlowInfo analyseCode(BlockScope currentScope, FlowContext flowContext, Fl
 		} else if (traversedContext instanceof InitializationFlowContext) {
 				currentScope.problemReporter().cannotReturnInInitializer(this);
 				return FlowInfo.DEAD_END;
+		} else if (traversedContext.associatedNode instanceof SwitchExpression) {
+				currentScope.problemReporter().switchExpressionsReturnWithinSwitchExpression(this);
+				return FlowInfo.DEAD_END;
 		}
 	} while ((traversedContext = traversedContext.getLocalParent()) != null);
 
@@ -248,7 +251,6 @@ public void generateCode(BlockScope currentScope, CodeStream codeStream) {
 
 /**
  * Dump the suitable return bytecode for a return statement
- *
  */
 public void generateReturnBytecode(CodeStream codeStream) {
 	codeStream.generateReturnBytecode(this.expression);
@@ -346,7 +348,7 @@ public void resolve(BlockScope scope) {
 	if (methodType == null)
 		return;
 
-	if (methodType.isProperType(true) && lambda != null) {
+	if (lambda != null && methodType.isProperType(true)) {
 		// ensure that type conversions don't leak a preliminary local type:
 		if (lambda.updateLocalTypes())
 			methodType = lambda.expectedResultType();

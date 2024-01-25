@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2018, 2020 IBM Corporation and others.
+ * Copyright (c) 2018, 2023 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -18,7 +18,6 @@ import static org.eclipse.jdt.internal.compiler.ast.ExpressionContext.VANILLA_CO
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.EmptyStackException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -53,7 +52,7 @@ public class SwitchExpression extends SwitchStatement implements IPolyExpression
 	private boolean isPolyExpression = false;
 	private TypeBinding[] originalValueResultExpressionTypes;
 	private TypeBinding[] finalValueResultExpressionTypes;
-	/* package */ Map<Expression, TypeBinding> originalTypeMap;
+	/* package */ Map<Expression, TypeBinding> originalTypeMap = new HashMap<>();
 
 
 	private int nullStatus = FlowInfo.UNKNOWN;
@@ -386,73 +385,10 @@ public class SwitchExpression extends SwitchStatement implements IPolyExpression
 		}
 		return true;
 	}
-	static class OOBLFlagger extends ASTVisitor {
-		Set<String> labelDecls;
-		Set<BreakStatement> referencedBreakLabels;
-		Set<ContinueStatement> referencedContinueLabels;
-		public OOBLFlagger(SwitchExpression se) {
-			this.labelDecls = new HashSet<>();
-			this.referencedBreakLabels = new HashSet<>();
-			this.referencedContinueLabels = new HashSet<>();
-		}
-		@Override
-		public boolean visit(SwitchExpression switchExpression, BlockScope blockScope) {
-			return true;
-		}
-		private void checkForOutofBoundLabels(BlockScope blockScope) {
-			try {
-				for (BreakStatement bs : this.referencedBreakLabels) {
-					if (bs.label == null || bs.label.length == 0)
-						continue;
-					if (!this.labelDecls.contains(new String(bs.label)))
-						blockScope.problemReporter().switchExpressionsBreakOutOfSwitchExpression(bs);
-				}
-				for (ContinueStatement cs : this.referencedContinueLabels) {
-					if (cs.label == null || cs.label.length == 0)
-						continue;
-					if (!this.labelDecls.contains(new String(cs.label)))
-						blockScope.problemReporter().switchExpressionsContinueOutOfSwitchExpression(cs);
-				}
-			} catch (EmptyStackException e) {
-				// ignore
-			}
-		}
 
-		@Override
-		public void endVisit(SwitchExpression switchExpression,	BlockScope blockScope) {
-			checkForOutofBoundLabels(blockScope);
-		}
-		@Override
-		public boolean visit(BreakStatement breakStatement, BlockScope blockScope) {
-			if (breakStatement.label != null && breakStatement.label.length != 0)
-				this.referencedBreakLabels.add(breakStatement);
-			return true;
-		}
-		@Override
-		public boolean visit(ContinueStatement continueStatement, BlockScope blockScope) {
-			if (continueStatement.label != null && continueStatement.label.length != 0)
-				this.referencedContinueLabels.add(continueStatement);
-			return true;
-		}
-		@Override
-		public boolean visit(LambdaExpression lambdaExpression, BlockScope blockScope) {
-			return false;
-		}
-		@Override
-		public boolean visit(LabeledStatement stmt, BlockScope blockScope) {
-			if (stmt.label != null && stmt.label.length != 0)
-				this.labelDecls.add(new String(stmt.label));
-			return true;
-		}
-		@Override
-		public boolean visit(ReturnStatement stmt, BlockScope blockScope) {
-			blockScope.problemReporter().switchExpressionsReturnWithinSwitchExpression(stmt);
-			return false;
-		}
-		@Override
-		public boolean visit(TypeDeclaration stmt, BlockScope blockScope) {
-			return false;
-		}
+	@Override
+	public void collectPatternVariablesToScope(LocalVariableBinding[] variables, BlockScope skope) {
+		// Do nothing. This will be called later during resolveType()
 	}
 	@Override
 	public TypeBinding resolveType(BlockScope upperScope) {
@@ -492,7 +428,6 @@ public class SwitchExpression extends SwitchStatement implements IPolyExpression
 					upperScope.problemReporter().switchExpressionNoResultExpressions(this);
 					return null;
 				}
-				this.traverse(new OOBLFlagger(this), upperScope);
 
 				if (this.originalValueResultExpressionTypes == null) {
 					this.originalValueResultExpressionTypes = new TypeBinding[resultExpressionsCount];
@@ -517,7 +452,8 @@ public class SwitchExpression extends SwitchStatement implements IPolyExpression
 				for (int i = 0; i < resultExpressionsCount; i++) {
 					Expression resultExpr = this.resultExpressions.get(i);
 					TypeBinding origType = this.originalTypeMap.get(resultExpr);
-					if (origType == null || origType.kind() == Binding.POLY_TYPE) {
+					// NB: if origType == null we assume that initial resolving failed hard, rendering re-resolving impossible
+					if (origType != null &&  origType.kind() == Binding.POLY_TYPE) {
 						this.finalValueResultExpressionTypes[i] = this.originalValueResultExpressionTypes[i] =
 							resultExpr.resolveTypeExpecting(upperScope, this.expectedType);
 					}

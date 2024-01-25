@@ -34,6 +34,8 @@ import com.google.common.io.RecursiveDeleteOption;
 import com.google.devtools.build.buildjar.instrumentation.JacocoInstrumentationProcessor;
 import com.google.devtools.build.buildjar.jarhelper.JarCreator;
 import com.google.devtools.build.buildjar.javac.BlazeEcjMain;
+import com.google.devtools.build.buildjar.javac.BlazeEcjToolMain;
+import com.google.devtools.build.buildjar.javac.BlazeJavacArguments;
 import com.google.devtools.build.buildjar.javac.BlazeJavacResult;
 import com.google.devtools.build.buildjar.javac.BlazeJavacResult.Status;
 import com.google.devtools.build.buildjar.javac.JavacRunner;
@@ -109,7 +111,11 @@ public class SimpleJavaLibraryBuilder implements Closeable {
     if (build.getSourceFiles().isEmpty()) {
       return BlazeJavacResult.ok();
     }
-    return compileSources(build, BlazeEcjMain::compile);
+    BlazeJavacArguments javacArguments = build.toBlazeJavacArguments(build.getClassPath());
+	JavacRunner javacRunner = javacArguments.blazeJavacOptions().contains("-Xecj_use_tool_compiler")
+			? BlazeEcjToolMain::compile // allow the simpler tool compiler in case the other one causes issues
+			: BlazeEcjMain::compile;
+	return compileSources(build, javacRunner);
   }
 
   /** Perform the build. */

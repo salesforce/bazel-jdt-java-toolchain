@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2021 IBM Corporation and others.
+ * Copyright (c) 2000, 2023 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -56,7 +56,6 @@ import java.util.Arrays;
 import java.util.Comparator;
 
 import org.eclipse.jdt.core.compiler.CharOperation;
-import org.eclipse.jdt.core.compiler.InvalidInputException;
 import org.eclipse.jdt.internal.compiler.ast.LambdaExpression;
 import org.eclipse.jdt.internal.compiler.ast.MethodDeclaration;
 import org.eclipse.jdt.internal.compiler.ast.NullAnnotationMatching;
@@ -137,6 +136,15 @@ public ReferenceBinding() {
 	super();
 }
 
+/**
+ * Get the accessor method given the record component name
+ * @param name name of the record component
+ * @return the method binding of the accessor if found, else null
+ */
+public MethodBinding getRecordComponentAccessor(char[] name) {
+	return null;
+}
+
 public static FieldBinding binarySearch(char[] name, FieldBinding[] sortedFields) {
 	if (sortedFields == null)
 		return null;
@@ -165,8 +173,6 @@ public static FieldBinding binarySearch(char[] name, FieldBinding[] sortedFields
  * (remember methods are sorted alphabetically on selectors), and end is the index of last contiguous methods with same
  * selector.
  * -1 means no method got found
- * @param selector
- * @param sortedMethods
  * @return (start + (end<<32)) or -1 if no method found
  */
 public static long binarySearch(char[] selector, MethodBinding[] sortedMethods) {
@@ -284,6 +290,12 @@ public void setHierarchyCheckDone() {
 	return;
 }
 
+/**
+ * @return true, if the fields of the binding are fully initialized.
+ */
+protected boolean isFieldInitializationFinished() {
+	return true;
+}
 
 /**
  * Answer true if the receiver can be instantiated
@@ -485,7 +497,7 @@ public void computeId() {
 
 		case 3 :
 			char[] packageName = this.compoundName[0];
-			// expect only java.*.* and javax.*.* and junit.*.* and org.junit.*
+			// expect only java.*.* and javax.*.* and jakarta.*.* and junit.*.* and org.junit.*
 			switch (packageName.length) {
 				case 3: // only one type in this group, yet:
 					if (CharOperation.equals(TypeConstants.ORG_JUNIT_ASSERT, this.compoundName))
@@ -498,7 +510,7 @@ public void computeId() {
 					if (!CharOperation.equals(TypeConstants.JAVA, packageName))
 						return;
 					break; // continue below ...
-				case 5:
+				case 5: // javax
 					switch (packageName[1]) {
 						case 'a':
 							if (CharOperation.equals(TypeConstants.JAVAX_ANNOTATION_INJECT_INJECT, this.compoundName))
@@ -507,6 +519,14 @@ public void computeId() {
 						case 'u':
 							if (CharOperation.equals(TypeConstants.JUNIT_FRAMEWORK_ASSERT, this.compoundName))
 								this.id = TypeIds.T_JunitFrameworkAssert;
+							return;
+					}
+					return;
+				case 7: // jakarta
+					switch (packageName[1]) {
+						case 'a':
+							if (CharOperation.equals(TypeConstants.JAKARTA_ANNOTATION_INJECT_INJECT, this.compoundName))
+								this.id = TypeIds.T_JavaxInjectInject;
 							return;
 					}
 					return;
@@ -1051,10 +1071,6 @@ public FieldBinding[] fields() {
 	return Binding.NO_FIELDS;
 }
 
-public RecordComponentBinding[] components() {
-	return Binding.NO_COMPONENTS;
-}
-
 public final int getAccessFlags() {
 	return this.modifiers & ExtraCompilerModifiers.AccJustFlag;
 }
@@ -1091,6 +1107,13 @@ public MethodBinding getExactMethod(char[] selector, TypeBinding[] argumentTypes
 	return null;
 }
 public FieldBinding getField(char[] fieldName, boolean needResolve) {
+	return null;
+}
+public RecordComponentBinding getComponent(char[] componentName, boolean needResolve) {
+	return null;
+}
+// adding this since we don't use sorting for components
+public RecordComponentBinding getRecordComponent(char[] name) {
 	return null;
 }
 /**
@@ -1254,8 +1277,10 @@ public boolean hasMemberTypes() {
  * for 1.8 check if the default is applicable to the given kind of location.
  */
 // pre: null annotation analysis is enabled
-boolean hasNonNullDefaultFor(int location, int sourceStart) {
+boolean hasNonNullDefaultForType(TypeBinding type, int location, int sourceStart) {
 	// Note, STB overrides for correctly handling local types
+	if (type != null && !type.acceptsNonNullDefault())
+		return false;
 	ReferenceBinding currentType = this;
 	while (currentType != null) {
 		int nullDefault = ((ReferenceBinding)currentType.original()).getNullDefault();
@@ -2009,7 +2034,7 @@ public char[] sourceName() {
  * Perform an upwards type projection as per JLS 4.10.5
  * @param scope Relevant scope for evaluating type projection
  * @param mentionedTypeVariables Filter for mentioned type variabled
- * @returns Upwards type projection of 'this', or null if downwards projection is undefined
+ * @return Upwards type projection of 'this', or null if downwards projection is undefined
 */
 @Override
 public ReferenceBinding upwardsProjection(Scope scope, TypeBinding[] mentionedTypeVariables) {
@@ -2020,7 +2045,7 @@ public ReferenceBinding upwardsProjection(Scope scope, TypeBinding[] mentionedTy
  * Perform a downwards type projection as per JLS 4.10.5
  * @param scope Relevant scope for evaluating type projection
  * @param mentionedTypeVariables Filter for mentioned type variabled
- * @returns Downwards type projection of 'this', or null if downwards projection is undefined
+ * @return Downwards type projection of 'this', or null if downwards projection is undefined
 */
 @Override
 public ReferenceBinding downwardsProjection(Scope scope, TypeBinding[] mentionedTypeVariables) {
@@ -2091,6 +2116,9 @@ public FieldBinding[] unResolvedFields() {
 	return Binding.NO_FIELDS;
 }
 
+public RecordComponentBinding[] unResolvedComponents() {
+	return Binding.NO_COMPONENTS;
+}
 /*
  * If a type - known to be a Closeable - is mentioned in one of our white lists
  * answer the typeBit for the white list (BitWrapperCloseable or BitResourceFreeCloseable).
@@ -2190,10 +2218,10 @@ protected int applyCloseableInterfaceWhitelists() {
 	return 0;
 }
 
-protected MethodBinding [] getInterfaceAbstractContracts(Scope scope, boolean replaceWildcards, boolean filterDefaultMethods) throws InvalidInputException {
+protected MethodBinding [] getInterfaceAbstractContracts(Scope scope, boolean replaceWildcards, boolean filterDefaultMethods) throws InvalidBindingException {
 
 	if (!isInterface() || !isValidBinding()) {
-		throw new InvalidInputException("Not a functional interface"); //$NON-NLS-1$
+		throw new InvalidBindingException("Not a functional interface"); //$NON-NLS-1$
 	}
 
 	MethodBinding [] methods = methods();
@@ -2220,7 +2248,7 @@ protected MethodBinding [] getInterfaceAbstractContracts(Scope scope, boolean re
 		if (method == null || method.isStatic() || method.redeclaresPublicObjectMethod(scope) || method.isPrivate())
 			continue;
 		if (!method.isValidBinding())
-			throw new InvalidInputException("Not a functional interface"); //$NON-NLS-1$
+			throw new InvalidBindingException("Not a functional interface"); //$NON-NLS-1$
 		for (int j = 0; j < contractsCount;) {
 			if ( contracts[j] != null && MethodVerifier.doesMethodOverride(method, contracts[j], environment)) {
 				contractsCount--;
@@ -2313,7 +2341,7 @@ public MethodBinding getSingleAbstractMethod(Scope scope, boolean replaceWildcar
 					return this.singleAbstractMethod[index] = samProblemBinding;
 			}
 		}
-	} catch (InvalidInputException e) {
+	} catch (InvalidBindingException e) {
 		return this.singleAbstractMethod[index] = samProblemBinding;
 	}
 	if (methods.length == 1)
@@ -2460,5 +2488,12 @@ public boolean hasEnclosingInstanceContext() {
 	if (enclosingMethod != null)
 		return !enclosingMethod.isStatic();
 	return false;
+}
+static class InvalidBindingException extends Exception {
+	private static final long serialVersionUID = 1L;
+
+	InvalidBindingException(String message) {
+		super(message);
+	}
 }
 }

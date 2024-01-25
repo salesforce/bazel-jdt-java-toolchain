@@ -28,11 +28,11 @@ exports_files(
     visibility = ["//:__pkg__"],
 )
 
-# a special toolchain for compiling ECJ with JDK17 but targeting 11
+# a special toolchain for compiling ECJ with JDK21 but targeting 17
 default_java_toolchain(
-    name = "java11_toolchain_with_javax17api",
+    name = "java17_toolchain_with_javax21api",
     configuration = VANILLA_TOOLCHAIN_CONFIGURATION,
-    java_runtime = "@bazel_tools//tools/jdk:remotejdk_17",
-    source_version = "11",
-    target_version = "11",
+    java_runtime = "@rules_java//toolchains:remotejdk_21",
+    source_version = "17",
+    target_version = "17",
 )

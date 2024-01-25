@@ -1,0 +1,13 @@
+-bootclasspath
+remotejdk_11/platformclasspath.jar
+-d
+bin
+-s
+src-gen
+--system
+remotejdk_11
+-verbose
+--release
+8
+-proc:none
+src/allow.java

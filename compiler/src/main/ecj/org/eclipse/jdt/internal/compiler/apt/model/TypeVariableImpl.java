@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2006, 2013 IBM Corporation and others.
+ * Copyright (c) 2006, 2023 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -38,7 +38,7 @@ public class TypeVariableImpl extends TypeMirrorImpl implements TypeVariable {
 	 */
 	@Override
 	public Element asElement() {
-		return _env.getFactory().newElement(this._binding);
+		return this._env.getFactory().newElement(this._binding);
 	}
 
 	/* (non-Javadoc)
@@ -60,13 +60,13 @@ public class TypeVariableImpl extends TypeMirrorImpl implements TypeVariable {
 		ReferenceBinding[] superInterfaces = typeVariableBinding.superInterfaces;
 		if (firstBound == null || superInterfaces.length == 0) {
 			// no explicit bound
-			return _env.getFactory().newTypeMirror(typeVariableBinding.upperBound());
+			return this._env.getFactory().newTypeMirror(typeVariableBinding.upperBound());
 		}
-		if (firstBound != null && superInterfaces.length == 1 && TypeBinding.equalsEquals(superInterfaces[0], firstBound)) {
+		if (superInterfaces.length == 1 && TypeBinding.equalsEquals(superInterfaces[0], firstBound)) {
 			// only one bound that is an interface
-			return _env.getFactory().newTypeMirror(typeVariableBinding.upperBound());
+			return this._env.getFactory().newTypeMirror(typeVariableBinding.upperBound());
 		}
-		return this._env.getFactory().newTypeMirror((TypeVariableBinding) this._binding);
+		return this._env.getFactory().newTypeMirror(this._binding);
 	}
 
 	/* (non-Javadoc)

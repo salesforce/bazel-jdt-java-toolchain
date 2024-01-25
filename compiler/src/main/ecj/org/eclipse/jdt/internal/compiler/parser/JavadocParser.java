@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2022 IBM Corporation and others.
+ * Copyright (c) 2000, 2023 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -13,7 +13,9 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.compiler.parser;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import org.eclipse.jdt.core.compiler.CharOperation;
 import org.eclipse.jdt.core.compiler.InvalidInputException;
@@ -67,6 +69,9 @@ public class JavadocParser extends AbstractCommentParser {
 	// flag to let the parser know that the current tag is waiting for a description
 	// see "https://bugs.eclipse.org/bugs/show_bug.cgi?id=222900"
 	private int tagWaitingForDescription;
+
+	private final ArrayList<String> regionNames = new ArrayList<>();
+	private int regionPosition = -1;
 
 	public JavadocParser(Parser sourceParser) {
 		super(sourceParser);
@@ -196,7 +201,7 @@ public class JavadocParser extends AbstractCommentParser {
 			return new JavadocArgumentExpression(name, argTypeRef.sourceStart, argEnd, argTypeRef);
 		}
 		catch (ClassCastException ex) {
-			throw new InvalidInputException();
+			throw Scanner.invalidInput();
 		}
 	}
 
@@ -228,7 +233,7 @@ public class JavadocParser extends AbstractCommentParser {
 			return field;
 		}
 		catch (ClassCastException ex) {
-			throw new InvalidInputException();
+			throw Scanner.invalidInput();
 		}
 	}
 
@@ -279,7 +284,7 @@ public class JavadocParser extends AbstractCommentParser {
 						}
 					}
 				} else {
-					throw new InvalidInputException();
+					throw Scanner.invalidInput();
 				}
 			}
 			// Create node
@@ -331,7 +336,7 @@ public class JavadocParser extends AbstractCommentParser {
 			}
 		}
 		catch (ClassCastException ex) {
-			throw new InvalidInputException();
+			throw Scanner.invalidInput();
 		}
 	}
 
@@ -343,6 +348,66 @@ public class JavadocParser extends AbstractCommentParser {
 
 	@Override
 	protected void createTag() {
+		this.tagValue = TAG_OTHERS_VALUE;
+	}
+
+	@Override
+	protected Object createSnippetTag() {
+		this.tagValue = TAG_SNIPPET_VALUE;
+		return this.tagValue;
+	}
+
+	@Override
+	protected Object createSnippetRegion(String name, List<Object> tags, Object snippetTag, boolean isDummyRegion, boolean considerPrevTag) {
+		if(this.regionNames.contains(name)) {
+			if(this.reportProblems) {
+				int startPos= this.lineEnd -this.scanner.getCurrentTokenString().length() +2;
+				if(this.regionPosition>0)
+					startPos = startPos+this.regionPosition;
+				this.sourceParser.problemReporter().javadocInvalidSnippetDuplicateRegions(startPos-4, startPos+1);
+			}
+			this.setSnippetIsValid(snippetTag, false);
+			this.setSnippetError(snippetTag, "Duplicate regions"); //$NON-NLS-1$
+		}
+		else {
+			if(name!=null)
+				this.regionNames.add(name);
+		}
+
+		if (tags != null && tags.size() > 0) {
+			return tags.get(0);
+		}
+		return name;
+	}
+
+	@Override
+	protected void setSnippetIsValid(Object obj, boolean value) {
+		//do nothing;
+	}
+
+	@Override
+	protected void setSnippetError(Object obj, String value) {
+		//do nothing;
+	}
+
+	@Override
+	protected void setSnippetID(Object tag, String value) {
+		// do nothing
+
+	}
+
+	@Override
+	protected Object createSnippetInnerTag(String tagName, int start, int end) {
+		return tagName;
+	}
+
+	@Override
+	protected void addTagProperties(Object Tag, Map<String, Object> map, int tagCount) {
+		return;
+	}
+
+	@Override
+	protected void addSnippetInnerTag(Object tag, Object snippetTag) {
 		this.tagValue = TAG_OTHERS_VALUE;
 	}
 
@@ -717,7 +782,7 @@ public class JavadocParser extends AbstractCommentParser {
 			case 'r':
 				if (length == TAG_RETURN_LENGTH && CharOperation.equals(TAG_RETURN, tagName, 0, length)) {
 					this.tagValue = TAG_RETURN_VALUE;
-					if (!this.inlineTagStarted) {
+					if(this.sourceLevel >= ClassFileConstants.JDK16 || !this.inlineTagStarted){
 						valid = parseReturn();
 					}
 				}
@@ -746,6 +811,16 @@ public class JavadocParser extends AbstractCommentParser {
 				} else if (length == TAG_SUMMARY_LENGTH && CharOperation.equals(TAG_SUMMARY, tagName, 0, length)) {
 					this.tagValue = TAG_SUMMARY_VALUE;
 					this.tagWaitingForDescription = this.tagValue;
+				} else if (length == TAG_SNIPPET_LENGTH && CharOperation.equals(TAG_SNIPPET, tagName, 0, length)) {
+					this.tagValue = TAG_SNIPPET_VALUE;
+					this.tagWaitingForDescription = this.tagValue;
+					if (this.inlineTagStarted) {
+						valid = parseSnippet();
+					}
+				}else if (length> TAG_SNIPPET_LENGTH && CharOperation.prefixEquals(TAG_SNIPPET, tagName)) {
+					if (this.reportProblems ) {
+						this.sourceParser.problemReporter().javadocInvalidSnippet(this.tagSourceStart, this.tagSourceEnd);
+					}
 				}
 				break;
 			case 't':
@@ -804,13 +879,18 @@ public class JavadocParser extends AbstractCommentParser {
 			}
 			// see bug https://bugs.eclipse.org/bugs/show_bug.cgi?id=267833
 			// Report a problem if a block tag is being used in the context of an inline tag and vice versa.
-			if ((this.inlineTagStarted ? JAVADOC_TAG_TYPE[this.tagValue] == TAG_TYPE_BLOCK : JAVADOC_TAG_TYPE[this.tagValue] == TAG_TYPE_INLINE)) {
-				valid = false;
-				this.tagValue = TAG_OTHERS_VALUE;
-				this.tagWaitingForDescription = NO_TAG_VALUE;
+			if(this.sourceLevel >= ClassFileConstants.JDK16) {
+				int acceptedTag = this.inlineTagStarted ? TAG_TYPE_INLINE : TAG_TYPE_BLOCK;
+				valid = (JAVADOC_TAG_TYPE_16PLUS[this.tagValue] & acceptedTag) != 0;
+			} else {
+				valid = (this.inlineTagStarted ? JAVADOC_TAG_TYPE[this.tagValue] == TAG_TYPE_INLINE : JAVADOC_TAG_TYPE[this.tagValue] == TAG_TYPE_BLOCK);
+			}
+			if (!valid) {
 				if (this.reportProblems) {
 					this.sourceParser.problemReporter().javadocUnexpectedTag(this.tagSourceStart, this.tagSourceEnd);
 				}
+				this.tagValue = TAG_OTHERS_VALUE;
+				this.tagWaitingForDescription = NO_TAG_VALUE;
 			}
 		}
 		return valid;
@@ -927,6 +1007,24 @@ public class JavadocParser extends AbstractCommentParser {
 	protected void pushText(int start, int end) {
 		// The tag gets its description => clear the flag
 		this.tagWaitingForDescription = NO_TAG_VALUE;
+	}
+
+	@Override
+	protected void  pushSnippetText(char[] text, int start, int end, boolean addNewLine, Object snippetTag) {
+		// The tag gets its description => clear the flag
+		this.tagWaitingForDescription = TAG_SNIPPET_VALUE;
+	}
+
+	@Override
+	protected void closeJavaDocRegion(String name, Object snippetTag, int end){
+		this.regionNames.remove(name);
+		//do nothing
+	}
+
+	@Override
+	protected void pushExternalSnippetText(char[] text, int start, int end, boolean addNewLine, Object snippetTag) {
+		// The tag gets its description => clear the flag
+		this.tagWaitingForDescription = TAG_SNIPPET_VALUE;
 	}
 
 	/*
@@ -1180,4 +1278,19 @@ public class JavadocParser extends AbstractCommentParser {
 
 	}
 
+
+	@Override
+	/**	 * call at the end of snippet, so clear regionNames
+	 */
+	protected boolean areRegionsClosed() {
+		int size = this.regionNames.size();
+		this.regionNames.clear();
+		return size==0;
+	}
+
+	@Override
+	protected void setRegionPosition(int currentPosition) {
+		this.regionPosition=currentPosition;
+
+	}
 }

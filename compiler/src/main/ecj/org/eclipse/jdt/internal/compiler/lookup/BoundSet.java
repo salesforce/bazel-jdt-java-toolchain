@@ -342,7 +342,7 @@ class BoundSet {
 	private TypeBound[] incorporatedBounds = Binding.NO_TYPE_BOUNDS;
 	private TypeBound[] unincorporatedBounds = new TypeBound[8];
 	private int unincorporatedBoundsCount = 0;
-	private TypeBound[] mostRecentBounds = new TypeBound[4]; // for quick & dirty duplicate elimination
+	private final TypeBound[] mostRecentBounds = new TypeBound[4]; // for quick & dirty duplicate elimination
 
 	public BoundSet() {}
 
@@ -503,28 +503,33 @@ class BoundSet {
 		if (this.unincorporatedBoundsCount == 0 && this.captures.isEmpty())
 			return true;
 
-		do {
-			TypeBound [] freshBounds;
-			System.arraycopy(this.unincorporatedBounds, 0, freshBounds = new TypeBound[this.unincorporatedBoundsCount], 0, this.unincorporatedBoundsCount);
-			this.unincorporatedBoundsCount = 0;
+		try {
+			do {
+				TypeBound [] freshBounds;
+				System.arraycopy(this.unincorporatedBounds, 0, freshBounds = new TypeBound[this.unincorporatedBoundsCount], 0, this.unincorporatedBoundsCount);
+				this.unincorporatedBoundsCount = 0;
 
-			// Pairwise bidirectional compare all bounds from previous generation with the fresh set.
-			if (!incorporate(context, this.incorporatedBounds, freshBounds))
-				return false;
-			// Pairwise bidirectional compare all fresh bounds.
-			if (!incorporate(context, freshBounds, freshBounds))
-				return false;
+				// Pairwise bidirectional compare all bounds from previous generation with the fresh set.
+				if (!incorporate(context, this.incorporatedBounds, freshBounds))
+					return false;
+				// Pairwise bidirectional compare all fresh bounds.
+				if (!incorporate(context, freshBounds, freshBounds))
+					return false;
 
-			// Merge the bounds into one incorporated generation.
-			final int incorporatedLength = this.incorporatedBounds.length;
-			final int unincorporatedLength = freshBounds.length;
-			TypeBound [] aggregate = new TypeBound[incorporatedLength + unincorporatedLength];
-			System.arraycopy(this.incorporatedBounds, 0, aggregate, 0, incorporatedLength);
-			System.arraycopy(freshBounds, 0, aggregate, incorporatedLength, unincorporatedLength);
-			this.incorporatedBounds = aggregate;
+				// Merge the bounds into one incorporated generation.
+				final int incorporatedLength = this.incorporatedBounds.length;
+				final int unincorporatedLength = freshBounds.length;
+				TypeBound [] aggregate = new TypeBound[incorporatedLength + unincorporatedLength];
+				System.arraycopy(this.incorporatedBounds, 0, aggregate, 0, incorporatedLength);
+				System.arraycopy(freshBounds, 0, aggregate, incorporatedLength, unincorporatedLength);
+				this.incorporatedBounds = aggregate;
 
-		} while (this.unincorporatedBoundsCount > 0);
-
+			} while (this.unincorporatedBoundsCount > 0);
+		} finally {
+			if (InferenceContext18.DEBUG) {
+				System.out.println("Incorporated:\n"+this); //$NON-NLS-1$
+			}
+		}
 		return true;
 	}
 	/**
@@ -983,8 +988,12 @@ class BoundSet {
 	 */
 	public boolean reduceOneConstraint(InferenceContext18 context, ConstraintFormula currentConstraint) throws InferenceFailureException {
 		Object result = currentConstraint.reduce(context);
-		if (result == ReductionResult.FALSE)
+		if (result == ReductionResult.FALSE) {
+			if (InferenceContext18.DEBUG) {
+				System.out.println("Couldn't reduce constraint "+currentConstraint+ " in\n"+context); //$NON-NLS-1$ //$NON-NLS-2$
+			}
 			return false;
+		}
 		if (result == ReductionResult.TRUE)
 			return true;
 		if (result == currentConstraint) {
@@ -1293,5 +1302,15 @@ class BoundSet {
 			}
 		}
 		return null;
+	}
+	public TypeBinding[] condition18_5_5_item_4(
+			ReferenceBinding rAlpha,
+			InferenceVariable[] alpha,
+			TypeBinding tPrime, InferenceContext18 ctx18) {
+		/* If T' is a parameterization of a generic class G, and there exists a supertype
+		 *  of R<α1, ..., αn> that is also a parameterization of G, let R' be that supertype.
+		 */
+		return tPrime.isParameterizedType() ?
+				superTypesWithCommonGenericType(rAlpha, tPrime) : null;
 	}
 }

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2006, 2017 IBM Corporation and others.
+ * Copyright (c) 2023 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -9,17 +9,11 @@
  * SPDX-License-Identifier: EPL-2.0
  *
  * Contributors:
- *     IBM Corporation - initial API and implementation
- *     Walter Harley   - Patch for ensuring the parent folders are created
+ *	 IBM Corporation - initial API and implementation
  *******************************************************************************/
 
-package org.eclipse.jdt.internal.compiler.apt.util;
+package org.eclipse.jdt.internal.compiler.tool;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -27,28 +21,30 @@ import java.io.Reader;
 import java.io.Writer;
 import java.net.URI;
 import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.NestingKind;
-import javax.tools.SimpleJavaFileObject;
+import javax.tools.JavaFileObject;
 
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFileConstants;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFileReader;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFormatException;
+import org.eclipse.jdt.internal.compiler.util.JRTUtil;
 
 /**
  * Implementation of a Java file object that corresponds to a file on the file system
  */
-public class EclipseFileObject extends SimpleJavaFileObject {
-	File f;
-	private Charset charset;
-	private boolean parentsExist; // parent directories exist
+public class PathFileObject implements JavaFileObject {
+	Path path;
+	private final Charset charset;
+	private final Kind kind;
 
-	public EclipseFileObject(String className, URI uri, Kind kind, Charset charset) {
-		super(uri, kind);
-		this.f = new File(this.uri);
+	public PathFileObject(Path path, Kind kind, Charset charset) {
+		this.path = path;
+		this.kind = kind;
 		this.charset = charset;
-		this.parentsExist = false;
 	}
 
 	/* (non-Javadoc)
@@ -61,12 +57,18 @@ public class EclipseFileObject extends SimpleJavaFileObject {
 			return null;
 		}
 		ClassFileReader reader = null;
-   		try {
-			reader = ClassFileReader.read(this.f);
+		try {
+			reader = readFromPath(this.path);
 		} catch (ClassFormatException e) {
 			// ignore
 		} catch (IOException e) {
-			// ignore
+			String error = "Failed to read access level from " + this.path; //$NON-NLS-1$
+			if (JRTUtil.PROPAGATE_IO_ERRORS) {
+				throw new IllegalStateException(error, e);
+			} else {
+				System.err.println(error);
+				e.printStackTrace();
+			}
 		}
 		if (reader == null) {
 			return null;
@@ -83,138 +85,144 @@ public class EclipseFileObject extends SimpleJavaFileObject {
 		}
 		return null;
 	}
-
+	private ClassFileReader readFromPath(Path p) throws ClassFormatException, IOException {
+		return new ClassFileReader(this.path.toUri(), Files.readAllBytes(this.path), this.path.getFileName().toString().toCharArray());
+	}
 	/* (non-Javadoc)
 	 * @see javax.tools.JavaFileObject#getNestingKind()
 	 */
 	@Override
 	public NestingKind getNestingKind() {
-		switch(kind) {
+		switch(this.kind) {
 			case SOURCE :
 				return NestingKind.TOP_LEVEL;
 			case CLASS :
-        		ClassFileReader reader = null;
-        		try {
-        			reader = ClassFileReader.read(this.f);
-        		} catch (ClassFormatException e) {
-        			// ignore
-        		} catch (IOException e) {
-        			// ignore
-        		}
-        		if (reader == null) {
-        			return null;
-        		}
-        		if (reader.isAnonymous()) {
-        			return NestingKind.ANONYMOUS;
-        		}
-        		if (reader.isLocal()) {
-        			return NestingKind.LOCAL;
-        		}
-        		if (reader.isMember()) {
-        			return NestingKind.MEMBER;
-        		}
-        		return NestingKind.TOP_LEVEL;
-        	default:
-        		return null;
+				ClassFileReader reader = null;
+				try {
+					reader = readFromPath(this.path);
+				} catch (ClassFormatException e) {
+					// ignore
+				} catch (IOException e) {
+					String error = "Failed to read access nesting kind from " + this.path; //$NON-NLS-1$
+					if (JRTUtil.PROPAGATE_IO_ERRORS) {
+						throw new IllegalStateException(error, e);
+					} else {
+						System.err.println(error);
+						e.printStackTrace();
+					}
+				}
+				if (reader == null) {
+					return null;
+				}
+				if (reader.isAnonymous()) {
+					return NestingKind.ANONYMOUS;
+				}
+				if (reader.isLocal()) {
+					return NestingKind.LOCAL;
+				}
+				if (reader.isMember()) {
+					return NestingKind.MEMBER;
+				}
+				return NestingKind.TOP_LEVEL;
+			default:
+				return null;
 		}
 	}
 
-	/* (non-Javadoc)
+	/**
 	 * @see javax.tools.FileObject#delete()
 	 */
 	@Override
 	public boolean delete() {
-		return this.f.delete();
+		return false;
 	}
 
 	@Override
 	public boolean equals(Object o) {
-		if (!(o instanceof EclipseFileObject)) {
+		if (!(o instanceof PathFileObject)) {
 			return false;
 		}
-		EclipseFileObject eclipseFileObject = (EclipseFileObject) o;
-		return eclipseFileObject.toUri().equals(this.uri);
+		PathFileObject PathFileObject = (PathFileObject) o;
+		return PathFileObject.toUri().equals(this.path.toUri());
 	}
 
-	/* (non-Javadoc)
+	/**
 	 * @see javax.tools.FileObject#getCharContent(boolean)
 	 */
 	@Override
 	public CharSequence getCharContent(boolean ignoreEncodingErrors) throws IOException {
-		return Util.getCharContents(this, ignoreEncodingErrors, org.eclipse.jdt.internal.compiler.util.Util.getFileByteContent(this.f), this.charset.name());
+		return Util.getCharContents(this, ignoreEncodingErrors,
+				org.eclipse.jdt.internal.compiler.util.Util.getFileByteContent(this.path.toFile()), this.charset.name());
 	}
 
-	/* (non-Javadoc)
+	/**
 	 * @see javax.tools.FileObject#getLastModified()
 	 */
 	@Override
 	public long getLastModified() {
-		return this.f.lastModified();
+		return this.path.toFile().lastModified();
 	}
 
 	@Override
 	public String getName() {
-        return this.f.getPath();
-    }
+		return this.path.toString();
+	}
 
 	@Override
 	public int hashCode() {
-		return f.hashCode();
+		return this.path.hashCode();
 	}
 
-	/* (non-Javadoc)
+	/**
 	 * @see javax.tools.FileObject#openInputStream()
 	 */
 	@Override
 	public InputStream openInputStream() throws IOException {
-		// TODO (olivier) should be used buffered input stream
-		return new FileInputStream(this.f);
+		return Files.newInputStream(this.path);
 	}
 
-	/* (non-Javadoc)
+	/**
 	 * @see javax.tools.FileObject#openOutputStream()
 	 */
 	@Override
 	public OutputStream openOutputStream() throws IOException {
-		ensureParentDirectoriesExist();
-		return new FileOutputStream(this.f);
+		return Files.newOutputStream(this.path);
 	}
 
-	/* (non-Javadoc)
+	/**
 	 * @see javax.tools.FileObject#openReader(boolean)
 	 */
 	@Override
 	public Reader openReader(boolean ignoreEncodingErrors) throws IOException {
-		return new FileReader(this.f);
+		return Files.newBufferedReader(this.path);
 	}
 
-	/* (non-Javadoc)
+	/**
 	 * @see javax.tools.FileObject#openWriter()
 	 */
 	@Override
 	public Writer openWriter() throws IOException {
-		ensureParentDirectoriesExist();
-		return new FileWriter(this.f);
+		return Files.newBufferedWriter(this.path);
 	}
 
 	@Override
 	public String toString() {
-		return this.f.getAbsolutePath();
+		return this.path.toString();
 	}
 
-    private void ensureParentDirectoriesExist() throws IOException {
-        if (!this.parentsExist) {
-            File parent = f.getParentFile();
-            if (parent != null && !parent.exists()) {
-                if (!parent.mkdirs()) {
-                    // could have been concurrently created
-                    if (!parent.exists() || !parent.isDirectory())
-                        throw new IOException("Unable to create parent directories for " + f); //$NON-NLS-1$
-                }
-            }
-            this.parentsExist = true;
-        }
-    }
+	@Override
+	public URI toUri() {
+		return this.path.toUri();
+	}
 
+	@Override
+	public Kind getKind() {
+		return this.kind;
+	}
 
+	@Override
+	public boolean isNameCompatible(String simpleName, Kind k) {
+		String fileName = this.path.getFileName().toString();
+		return fileName.endsWith(simpleName + k.extension);
+	}
 }

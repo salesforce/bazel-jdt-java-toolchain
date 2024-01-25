@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2020 IBM Corporation and others.
+ * Copyright (c) 2000, 2023 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -73,6 +73,8 @@ public abstract class AbstractMethodDeclaration
 	public int bodyEnd = -1;
 	public CompilationResult compilationResult;
 	public boolean containsSwitchWithTry = false;
+	public boolean addPatternAccessorException = false;
+	public LocalVariableBinding recPatCatchVar = null;
 
 	AbstractMethodDeclaration(CompilationResult compilationResult){
 		this.compilationResult = compilationResult;
@@ -225,9 +227,8 @@ public abstract class AbstractMethodDeclaration
 						flowInfo.markAsDefinitelyNonNull(methodArguments[i].binding);
 					else if (tagBits == TagBits.AnnotationNullable)
 						flowInfo.markPotentiallyNullBit(methodArguments[i].binding);
-					else if (methodBinding.parameters[i].isFreeTypeVariable()) {
+					else if (methodBinding.parameters[i].isFreeTypeVariable())
 						flowInfo.markNullStatus(methodArguments[i].binding, FlowInfo.FREE_TYPEVARIABLE);
-					}
 				} else {
 					if (methodBinding.parameterNonNullness != null) {
 						// leverage null-info from parameter annotations:
@@ -240,6 +241,8 @@ public abstract class AbstractMethodDeclaration
 						}
 					}
 				}
+				if (!flowInfo.hasNullInfoFor(methodArguments[i].binding))
+					flowInfo.markNullStatus(methodArguments[i].binding, FlowInfo.UNKNOWN); // ensure nullstatus is initialized
 				// tag parameters as being set:
 				flowInfo.markAsDefinitelyAssigned(methodArguments[i].binding);
 			}
@@ -254,8 +257,6 @@ public abstract class AbstractMethodDeclaration
 
 	/**
 	 * Bytecode generation for a method
-	 * @param classScope
-	 * @param classFile
 	 */
 	public void generateCode(ClassScope classScope, ClassFile classFile) {
 
@@ -350,9 +351,16 @@ public abstract class AbstractMethodDeclaration
 				}
 			}
 			if (this.statements != null) {
+				if (this.addPatternAccessorException)
+					codeStream.addPatternCatchExceptionInfo(this.scope, this.recPatCatchVar);
+
 				for (Statement stmt : this.statements) {
 					stmt.generateCode(this.scope, codeStream);
 				}
+
+				if (this.addPatternAccessorException)
+					codeStream.removePatternCatchExceptionInfo(this.scope, ((this.bits & ASTNode.NeedFreeReturn) != 0));
+
 			}
 			// if a problem got reported during code gen, then trigger problem method creation
 			if (this.ignoreFurtherInvestigation) {
@@ -477,8 +485,6 @@ public abstract class AbstractMethodDeclaration
 
 	/**
 	 * Fill up the method body with statement
-	 * @param parser
-	 * @param unit
 	 */
 	public abstract void parseStatements(Parser parser, CompilationUnitDeclaration unit);
 
@@ -641,14 +647,15 @@ public abstract class AbstractMethodDeclaration
 			// Set javadoc visibility
 			int javadocVisibility = this.binding.modifiers & ExtraCompilerModifiers.AccVisibilityMASK;
 			ClassScope classScope = this.scope.classScope();
-			ProblemReporter reporter = this.scope.problemReporter();
-			int severity = reporter.computeSeverity(IProblem.JavadocMissing);
-			if (severity != ProblemSeverities.Ignore) {
-				if (classScope != null) {
-					javadocVisibility = Util.computeOuterMostVisibility(classScope.referenceType(), javadocVisibility);
+			try (ProblemReporter reporter = this.scope.problemReporter()) {
+				int severity = reporter.computeSeverity(IProblem.JavadocMissing);
+				if (severity != ProblemSeverities.Ignore) {
+					if (classScope != null) {
+						javadocVisibility = Util.computeOuterMostVisibility(classScope.referenceType(), javadocVisibility);
+					}
+					int javadocModifiers = (this.binding.modifiers & ~ExtraCompilerModifiers.AccVisibilityMASK) | javadocVisibility;
+					reporter.javadocMissing(this.sourceStart, this.sourceEnd, severity, javadocModifiers);
 				}
-				int javadocModifiers = (this.binding.modifiers & ~ExtraCompilerModifiers.AccVisibilityMASK) | javadocVisibility;
-				reporter.javadocMissing(this.sourceStart, this.sourceEnd, severity, javadocModifiers);
 			}
 		}
 	}
@@ -660,6 +667,7 @@ public abstract class AbstractMethodDeclaration
  				Statement stmt = this.statements[i];
  				stmt.resolve(this.scope);
 			}
+ 			this.recPatCatchVar = RecordPattern.getRecPatternCatchVar(0, this.scope);
 		} else if ((this.bits & UndocumentedEmptyBlock) != 0) {
 			if (!this.isConstructor() || this.arguments != null) { // https://bugs.eclipse.org/bugs/show_bug.cgi?id=319626
 				this.scope.problemReporter().undocumentedEmptyBlock(this.bodyStart-1, this.bodyEnd+1);

@@ -25,7 +25,6 @@ package org.eclipse.jdt.internal.compiler.lookup;
 
 import java.util.Set;
 
-import org.eclipse.jdt.core.compiler.InvalidInputException;
 import org.eclipse.jdt.internal.compiler.ast.Wildcard;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFileConstants;
 
@@ -38,6 +37,8 @@ import org.eclipse.jdt.internal.compiler.classfmt.ClassFileConstants;
  * </ul>
  */
 public class IntersectionTypeBinding18 extends ReferenceBinding {
+
+	private static final char[] INTERSECTION_PACKAGE_NAME = "<package intersection>".toCharArray(); //$NON-NLS-1$
 
 	public ReferenceBinding [] intersectingTypes;
 	private ReferenceBinding javaLangObject;
@@ -67,7 +68,7 @@ public class IntersectionTypeBinding18 extends ReferenceBinding {
 	}
 
 	@Override
-	protected MethodBinding[] getInterfaceAbstractContracts(Scope scope, boolean replaceWildcards, boolean filterDefaultMethods) throws InvalidInputException {
+	protected MethodBinding[] getInterfaceAbstractContracts(Scope scope, boolean replaceWildcards, boolean filterDefaultMethods) throws InvalidBindingException {
 		int typesLength = this.intersectingTypes.length;
 		MethodBinding[][] methods = new MethodBinding[typesLength][];
 		int contractsLength = 0;
@@ -256,6 +257,11 @@ public class IntersectionTypeBinding18 extends ReferenceBinding {
 	}
 
 	@Override
+	public char[] qualifiedPackageName() {
+		return INTERSECTION_PACKAGE_NAME;
+	}
+
+	@Override
 	public char[] qualifiedSourceName() {
 		StringBuilder qualifiedSourceName = new StringBuilder(16);
 		for (int i = 0; i < this.length; i++) {
@@ -372,5 +378,10 @@ public class IntersectionTypeBinding18 extends ReferenceBinding {
 		for (TypeBinding intersectingType : this.intersectingTypes)
 			this.tagBits |= intersectingType.updateTagBits();
 		return super.updateTagBits();
+	}
+
+	@Override
+	public boolean isNonDenotable() {
+		return true;
 	}
 }

@@ -1,5 +1,9 @@
 name: CI
 
+concurrency: 
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   # Triggers the workflow on push or pull request events but only for the main branch
   push:
@@ -16,35 +20,80 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
     - name: Mount bazel cache
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cache/bazel
           ~/.cache/bazelisk
         key: bazel
 
-    - name: Install bazelisk
+    - name: Build JdtJavaBuilder_deploy.jar
       run: |
-        curl -LO "https://github.com/bazelbuild/bazelisk/releases/download/v1.10.1/bazelisk-linux-amd64"
-        mkdir -p "${GITHUB_WORKSPACE}/bin/"
-        mv bazelisk-linux-amd64 "${GITHUB_WORKSPACE}/bin/bazel"
-        chmod +x "${GITHUB_WORKSPACE}/bin/bazel"
+        bazelisk build :JdtJavaBuilder_deploy.jar
+        cp -fv bazel-bin/JdtJavaBuilder_deploy.jar compiler/export/
+
+  test:
+    needs: [build]
+    
+    runs-on: ubuntu-latest
+    
+    strategy:
+      fail-fast: false # we want all results
+      matrix:
+        compiler: [ecj, ecjtool, javac]
+        java_versions: # not all combinations are allowed: language <= runtime 
+          - {language: 11, runtime: local_jdk} 
+          - {language: 11, runtime: remotejdk_11} 
+          - {language: 11, runtime: remotejdk_17} 
+          - {language: 11, runtime: remotejdk_21} 
+          - {language: 17, runtime: remotejdk_17} 
+          - {language: 17, runtime: remotejdk_21} 
+          - {language: 21, runtime: remotejdk_21} 
+        
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Mount bazel cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/bazel
+          ~/.cache/bazelisk
+        key: bazel
 
     - name: Build JdtJavaBuilder_deploy.jar
       run: |
-        "${GITHUB_WORKSPACE}/bin/bazel" build :JdtJavaBuilder_deploy.jar
+        bazelisk build :JdtJavaBuilder_deploy.jar
         cp -fv bazel-bin/JdtJavaBuilder_deploy.jar compiler/export/
 
-    - name: Build turbine_direct_binary_deploy.jar
-      run: |
-        "${GITHUB_WORKSPACE}/bin/bazel" build //compiler/third_party/turbine:turbine_direct_binary_deploy.jar
-        cp -fv bazel-bin/compiler/third_party/turbine/turbine_direct_binary_deploy.jar compiler/tools/
-
-    - name: Test Compile
+    - name: Prepare Test Compile
       run: |
         cd examples/
-        "${GITHUB_WORKSPACE}/bin/bazel" build //...
+        echo "JAVA_HOME=$JAVA_HOME"
+        java --version
+        bazelisk info
+        bazelisk clean
 
+    - name: Echo Bazel Flags
+      run: |
+        echo "using --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }}"
+
+    - name: Test Compile & Test
+      run: |
+        cd examples/
+        bazelisk build --config=${{ matrix.compiler }} --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }} //...
+        bazelisk test --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }} //...
+      
+    - name: Dump Test Logs when failed
+      if: ${{ failure() }}
+      run: |
+        cd  examples
+        find -L ./bazel-testlogs  -type f -name test.log -exec cat {} \;
+
+    - name: Clear Test Output
+      run: |
+        cd examples/
+        bazelisk clean

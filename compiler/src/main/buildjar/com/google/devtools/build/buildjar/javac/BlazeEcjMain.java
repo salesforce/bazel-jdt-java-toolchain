@@ -31,6 +31,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -49,6 +50,7 @@ import org.eclipse.jdt.internal.compiler.batch.FileSystem;
 import org.eclipse.jdt.internal.compiler.batch.FileSystem.Classpath;
 import org.eclipse.jdt.internal.compiler.batch.FileSystem.ClasspathAnswer;
 import org.eclipse.jdt.internal.compiler.batch.Main;
+import org.eclipse.jdt.internal.compiler.classfmt.ClassFileConstants;
 import org.eclipse.jdt.internal.compiler.env.ICompilationUnit;
 import org.eclipse.jdt.internal.compiler.impl.CompilerOptions;
 import org.eclipse.jdt.internal.compiler.problem.ProblemSeverities;
@@ -303,8 +305,8 @@ public class BlazeEcjMain {
 		PrintWriter errWriter = new PrintWriter(errOutput);
 
 		// note, all -Xecj... are "blaze" specific javac options
-		String collectUsedDepsOption = getJavacOptionValue(arguments.blazeJavacOptions(), "-Xecj_collect_used_deps");
-		String problemSeverityPreferencesFile = getJavacOptionValue(arguments.blazeJavacOptions(),
+		String collectUsedDepsOption = JavacOptions.getJavacOptionValue(arguments.blazeJavacOptions(), "-Xecj_collect_used_deps");
+		String problemSeverityPreferencesFile = JavacOptions.getJavacOptionValue(arguments.blazeJavacOptions(),
 				"-Xecj_problem_severity_preferences");
 
 		Map<String, String> problemSeverityPreferences = null;
@@ -326,14 +328,29 @@ public class BlazeEcjMain {
 //    ecjArguments.add("-referenceInfo"); // easy way to get used dependencies
 		arguments.sourceFiles().stream().map(Path::toString).forEach(ecjArguments::add);
 
-//    if(compiler.verbose) {
-//    	errWriter.println("ECJ Command Line:");
-//    	errWriter.println(ecjArguments.stream().collect(joining(System.lineSeparator())));
-//    	errWriter.println();
-//    	errWriter.println();
-//    }
-
 		boolean compileResult = compiler.compile((String[]) ecjArguments.toArray(new String[ecjArguments.size()]));
+
+		if (compiler.verbose) {
+			errWriter.println();
+			errWriter.println();
+			errWriter.println("-----------------");
+			errWriter.println("ECJ command line:");
+			errWriter.println("-----------------");
+			errWriter.println(ecjArguments.stream().collect(joining(System.lineSeparator())));
+			errWriter.println("-----------------");
+			errWriter.println();
+			errWriter.println();
+			errWriter.println("-----------------");
+			errWriter.println("java.home:           " + System.getProperty("java.home"));
+			errWriter.println("java.version:        " + System.getProperty("java.version"));
+			errWriter.println("java.vm.name:        " + System.getProperty("java.vm.name"));
+			errWriter.println("java.vm.version:     " + System.getProperty("java.vm.version"));
+			errWriter.println("java.vendor:         " + System.getProperty("java.vendor"));
+			errWriter.println("java.vendor.version: " + System.getProperty("java.vendor.version"));
+			errWriter.println("-----------------");
+			errWriter.println();
+			errWriter.println();
+		}
 
 		BlazeJavacStatistics.Builder builder = BlazeJavacStatistics.newBuilder();
 
@@ -383,33 +400,6 @@ public class BlazeEcjMain {
 	private static boolean isDisabled(String problemSeverityPreferences) {
 		Set<String> turnOffSettings = Set.of("off", "none", "disabled", "");
 		return turnOffSettings.contains(problemSeverityPreferences);
-	}
-
-	/**
-	 * Go through the list of javac options and collect the value of the <b>last</b>
-	 * option found.
-	 * <p>
-	 * The reason we go with last is that we assume it's the most specific.
-	 * </p>
-	 *
-	 * @param javacOptions
-	 * @param optionName
-	 * @return
-	 */
-	private static String getJavacOptionValue(List<String> javacOptions, String optionName) {
-		String value = null; // last one wins
-		for (int i = 0; i < javacOptions.size(); i++) {
-			String option = javacOptions.get(i);
-			if (option.startsWith(optionName)) {
-				int separatorPos = option.indexOf('=');
-				if (separatorPos == -1 && javacOptions.size() > i + 1) {
-					value = javacOptions.get(i + 1);
-				} else {
-					value = option.substring(separatorPos + 1).trim();
-				}
-			}
-		}
-		return value;
 	}
 
 	static Map<String, String> loadProblemSeverityPreferences(Path compilerPreferencesFile) throws IOException {
@@ -537,12 +527,11 @@ public class BlazeEcjMain {
 		// set]fileManager.setLocationFromPaths(StandardLocation.MODULE_PATH,
 		// arguments.classPath());
 
-//	if(compilerOptions.complianceLevel <= ClassFileConstants.JDK1_8) {
-//		if(!arguments.bootClassPath().isEmpty()) {
-//			ecjArguments.add("-bootclasspath");
-//			ecjArguments.add(arguments.bootClassPath().stream().map(Path::toString).collect(joining(":")));
-//		}
-//	}
+		// -bootclasspath is only allowed when --release is not specified and -target us below 8 (https://github.com/eclipse-jdt/eclipse.jdt.core/issues/1903)
+		if (isBootclasspathAllowed(arguments.javacOptions()) && !arguments.bootClassPath().isEmpty()) {
+			ecjArguments.add("-bootclasspath");
+			ecjArguments.add(arguments.bootClassPath().stream().map(Path::toString).collect(joining(":")));
+		}
 
 		ecjArguments.add("-d");
 		ecjArguments.add(arguments.classOutput().toString());
@@ -557,10 +546,41 @@ public class BlazeEcjMain {
 			ecjArguments.add(arguments.sourcePath().stream().map(Path::toString).collect(joining(":")));
 		}
 
-		if (arguments.system() != null) {
+		// --system is only allowed when --release is not specified (https://github.com/eclipse-jdt/eclipse.jdt.core/issues/1903)
+		if (isSystemAllowed(arguments.javacOptions()) && arguments.system() != null) {
 			ecjArguments.add("--system");
 			ecjArguments.add(arguments.system().toString());
 		}
+	}
+
+	private static boolean isBootclasspathAllowed(ImmutableList<String> javacOptions) {
+		// -bootclasspath is not supported at compliance level 9 and above
+
+		// note, we can rely on the fact that ReleaseOptionNormalizer normalized the
+		// javacOptions already; however, `--release` trumps everything
+		if(javacOptions.contains("--release"))
+			return false;
+
+		for (Iterator<String> stream = javacOptions.iterator(); stream.hasNext();) {
+			String option = stream.next();
+
+			if (option.equals("-target")) {
+				long versionToJDKLevel = CompilerOptions.versionToJdkLevel((String) stream.next());
+				return versionToJDKLevel <= ClassFileConstants.JDK1_8; // only when < 9
+			}
+		}
+
+		return true; // allow it
+	}
+
+	private static boolean isSystemAllowed(ImmutableList<String> javacOptions) {
+		// note, we can rely on the fact that ReleaseOptionNormalizer normalized the
+		// javacOptions already; however, `--release` trumps everything
+		if(javacOptions.contains("--release"))
+			return false;
+
+		// in contrast to -bootclasspath --system is allowed in combination with -target
+		return true; // allow it
 	}
 
 //  /**

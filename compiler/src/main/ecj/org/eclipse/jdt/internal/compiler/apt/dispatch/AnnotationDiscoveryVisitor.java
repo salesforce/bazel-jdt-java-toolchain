@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2006, 2020 IBM Corporation and others.
+ * Copyright (c) 2006, 2023 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -60,9 +60,9 @@ public class AnnotationDiscoveryVisitor extends ASTVisitor {
 	final ManyToMany<TypeElement, Element> _annoToElement;
 
 	public AnnotationDiscoveryVisitor(BaseProcessingEnvImpl env) {
-		_env = env;
-		_factory = env.getFactory();
-		_annoToElement = new ManyToMany<>();
+		this._env = env;
+		this._factory = env.getFactory();
+		this._annoToElement = new ManyToMany<>();
 	}
 
 	@Override
@@ -275,15 +275,14 @@ public class AnnotationDiscoveryVisitor extends ASTVisitor {
 		scope.insideTypeAnnotation = true;
 		currentBinding.getAnnotationTagBits();
 		scope.insideTypeAnnotation = old;
-		ElementImpl element = (ElementImpl) _factory.newElement(currentBinding);
+		ElementImpl element = (ElementImpl) this._factory.newElement(currentBinding);
 		AnnotationBinding [] annotationBindings = element.getPackedAnnotationBindings(); // discovery is never in terms of repeating annotation.
 		for (AnnotationBinding binding : annotationBindings) {
 			ReferenceBinding annotationType = binding.getAnnotationType();
-			if (binding != null
-					&& Annotation.isAnnotationTargetAllowed(scope, annotationType, currentBinding)
+			if (Annotation.isAnnotationTargetAllowed(scope, annotationType, currentBinding)
 					) { // binding should be resolved, but in case it's not, ignore it: it could have been wrapped into a container.
-				TypeElement anno = (TypeElement)_factory.newElement(annotationType);
-				_annoToElement.put(anno, element);
+				TypeElement anno = (TypeElement)this._factory.newElement(annotationType);
+				this._annoToElement.put(anno, element);
 			}
 		}
 	}

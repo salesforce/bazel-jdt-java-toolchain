@@ -138,7 +138,7 @@ http_file(
     name = "bazel_org_jacoco_core_jar",
     downloaded_file_path = "org.jacoco.core-0.8.9-SNAPSHOT.jar",
     urls = [
-        "https://github.com/bazelbuild/bazel/raw/master/third_party/java/jacoco/org.jacoco.core-0.8.9-SNAPSHOT.jar"
+        "https://github.com/bazelbuild/bazel/raw/ad8ea5aed2c97c4dbbe577fb69adbd51746f6a51/third_party/java/jacoco/org.jacoco.core-0.8.9-SNAPSHOT.jar"
     ],
     sha256 = "434d2b652afbf48904172d3f078ed126220997f247d66d5ed93a8f5f107783b3",
 )
@@ -147,7 +147,7 @@ http_file(
     name = "bazel_org_jacoco_core_srcjar",
     downloaded_file_path = "org.jacoco.core-0.8.9-SNAPSHOT-sources.jar",
     urls = [
-        "https://github.com/bazelbuild/bazel/raw/master/third_party/java/jacoco/org.jacoco.core-0.8.9-SNAPSHOT-sources.jar"
+        "https://github.com/bazelbuild/bazel/raw/ad8ea5aed2c97c4dbbe577fb69adbd51746f6a51/third_party/java/jacoco/org.jacoco.core-0.8.9-SNAPSHOT-sources.jar"
     ],
     sha256 = "0d40cf9f67cc790727554d5474f8e2a9262aa2c99c6bada2defa97644eacf01d",
 )

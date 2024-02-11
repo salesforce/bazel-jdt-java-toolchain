@@ -10,4 +10,5 @@ directories:
 
 derive_targets_from_directories: true
 
-java_language_level: 11
+target_provisioning_settings:
+  jre_system_library=current_java_runtime

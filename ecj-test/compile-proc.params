@@ -1,0 +1,11 @@
+-d
+bin-proc
+-s
+src-gen
+-verbose
+--release
+11
+src-proc/sample/processor/api/GeneratedResourceFamilyDefinition.java
+src-proc/sample/processor/api/WrapperDefinition.java
+src-proc/sample/processor/api/ResourceDefinition.java
+src-proc/sample/processor/GeneratorAnnotationProcessor.java

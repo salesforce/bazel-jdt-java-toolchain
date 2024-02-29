@@ -2,4 +2,5 @@ remotejdk*
 zulu*
 *.jar
 *.tar.gz
-bin/
+bin*/
+src-gen/

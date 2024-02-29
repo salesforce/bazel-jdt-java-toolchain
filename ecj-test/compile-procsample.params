@@ -1,0 +1,16 @@
+-d
+bin
+-s
+src-gen
+-verbose
+--release
+11
+-processorpath
+bin-proc
+-processor
+sample.processor.GeneratorAnnotationProcessor
+-classpath
+bin-proc
+src/sample/processor/usage/testing/ITestResource.java
+src/sample/processor/usage/checks/ISomeChecks.java
+src/sample/processor/usage/MyResources.java

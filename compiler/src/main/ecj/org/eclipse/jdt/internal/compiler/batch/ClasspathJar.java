@@ -30,16 +30,16 @@ import java.util.zip.ZipFile;
 
 import org.eclipse.jdt.core.compiler.CharOperation;
 import org.eclipse.jdt.internal.compiler.batch.FileSystem.Classpath;
-import org.eclipse.jdt.internal.compiler.batch.FileSystem.ClasspathAnswer;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFileReader;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFormatException;
 import org.eclipse.jdt.internal.compiler.classfmt.ExternalAnnotationDecorator;
 import org.eclipse.jdt.internal.compiler.classfmt.ExternalAnnotationProvider;
 import org.eclipse.jdt.internal.compiler.env.AccessRuleSet;
-import org.eclipse.jdt.internal.compiler.env.IBinaryType;
 import org.eclipse.jdt.internal.compiler.env.IModule;
-import org.eclipse.jdt.internal.compiler.lookup.BinaryTypeBinding.ExternalAnnotationStatus;
+import org.eclipse.jdt.internal.compiler.env.NameEnvironmentAnswer;
+import org.eclipse.jdt.internal.compiler.env.IBinaryType;
 import org.eclipse.jdt.internal.compiler.lookup.TypeConstants;
+import org.eclipse.jdt.internal.compiler.lookup.BinaryTypeBinding.ExternalAnnotationStatus;
 import org.eclipse.jdt.internal.compiler.util.ManifestAnalyzer;
 import org.eclipse.jdt.internal.compiler.util.SuffixConstants;
 import org.eclipse.jdt.internal.compiler.util.Util;
@@ -65,15 +65,16 @@ public ClasspathJar(File file, boolean closeZipFileAtEnd,
 public List<Classpath> fetchLinkedJars(FileSystem.ClasspathSectionProblemReporter problemReporter) {
 	// expected to be called once only - if multiple calls desired, consider
 	// using a cache
-	InputStream inputStream = null;
 	try {
 		initialize();
 		ArrayList<Classpath> result = new ArrayList<>();
 		ZipEntry manifest = this.zipFile.getEntry(TypeConstants.META_INF_MANIFEST_MF);
 		if (manifest != null) { // non-null implies regular file
-			inputStream = this.zipFile.getInputStream(manifest);
 			ManifestAnalyzer analyzer = new ManifestAnalyzer();
-			boolean success = analyzer.analyzeManifestContents(inputStream);
+			boolean success;
+			try (InputStream inputStream = this.zipFile.getInputStream(manifest)) {
+				success = analyzer.analyzeManifestContents(inputStream);
+			}
 			List calledFileNames = analyzer.getCalledFileNames();
 			if (problemReporter != null) {
 				if (!success || analyzer.getClasspathSectionsCount() == 1 &&  calledFileNames == null) {
@@ -100,22 +101,14 @@ public List<Classpath> fetchLinkedJars(FileSystem.ClasspathSectionProblemReporte
 		// JRE 9 could throw an IAE if the path is incorrect. We are to ignore such
 		// linked jars
 		return null;
-	} finally {
-		if (inputStream != null) {
-			try {
-				inputStream.close();
-			} catch (IOException e) {
-				// best effort
-			}
-		}
 	}
 }
 @Override
-public ClasspathAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName) {
+public NameEnvironmentAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName) {
 	return findClass(typeName, qualifiedPackageName, moduleName, qualifiedBinaryFileName, false);
 }
 @Override
-public ClasspathAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName, boolean asBinaryOnly) {
+public NameEnvironmentAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName, boolean asBinaryOnly) {
 	if (!isPackage(qualifiedPackageName, moduleName))
 		return null; // most common case
 
@@ -150,7 +143,7 @@ public ClasspathAnswer findClass(char[] typeName, String qualifiedPackageName, S
 				// location is configured for external annotations, but no .eea found, decorate in order to answer NO_EEA_FILE:
 				reader = new ExternalAnnotationDecorator(reader, null);
 			}
-			return new ClasspathAnswer(reader, fetchAccessRestriction(qualifiedBinaryFileName), modName, this);
+			return new NameEnvironmentAnswer(reader, fetchAccessRestriction(qualifiedBinaryFileName), modName);
 		}
 	} catch (ClassFormatException | IOException e) {
 		// treat as if class file is missing

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2023 IBM Corporation and others.
+ * Copyright (c) 2000, 2024 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -488,7 +488,7 @@ public boolean hasErrors() {
 }
 
 @Override
-public StringBuffer print(int indent, StringBuffer output) {
+public StringBuilder print(int indent, StringBuilder output) {
 	if (this.currentPackage != null) {
 		printIndent(indent, output).append("package "); //$NON-NLS-1$
 		this.currentPackage.print(0, output, false).append(";\n"); //$NON-NLS-1$
@@ -712,7 +712,7 @@ private void reportNLSProblems() {
 			int i = 0;
 			stringLiteralsLoop: for (; i < stringLiteralsLength; i++) {
 				literal = this.stringLiterals[i];
-				final int literalLineNumber = literal instanceof TextBlock ? ((TextBlock)literal).endLineNumber : literal.lineNumber;
+				final int literalLineNumber = literal instanceof TextBlock ? ((TextBlock)literal).endLineNumber : literal.getLineNumber();
 				if (lastLineNumber != literalLineNumber) {
 					indexInLine = 1;
 					lastLineNumber = literalLineNumber;

@@ -31,10 +31,10 @@ import javax.tools.JavaFileObject;
 
 import org.eclipse.jdt.core.compiler.CharOperation;
 import org.eclipse.jdt.internal.compiler.batch.FileSystem.Classpath;
-import org.eclipse.jdt.internal.compiler.batch.FileSystem.ClasspathAnswer;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFileReader;
 import org.eclipse.jdt.internal.compiler.classfmt.ClassFormatException;
 import org.eclipse.jdt.internal.compiler.env.IModule;
+import org.eclipse.jdt.internal.compiler.env.NameEnvironmentAnswer;
 
 @SuppressWarnings({ "rawtypes", "unchecked" })
 public class ClasspathJsr199 extends ClasspathLocation {
@@ -77,7 +77,7 @@ public class ClasspathJsr199 extends ClasspathLocation {
 	}
 
 	@Override
-	public ClasspathAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName,
+	public NameEnvironmentAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName,
 			String aQualifiedBinaryFileName, boolean asBinaryOnly) {
 		if (this.jrt != null) {
 			return this.jrt.findClass(typeName, qualifiedPackageName, moduleName, aQualifiedBinaryFileName, asBinaryOnly);
@@ -102,7 +102,7 @@ public class ClasspathJsr199 extends ClasspathLocation {
 			try (InputStream inputStream = jfo.openInputStream()) {
 				ClassFileReader reader = ClassFileReader.read(inputStream, qualifiedBinaryFileName);
 				if (reader != null) {
-					return new ClasspathAnswer(reader, fetchAccessRestriction(qualifiedBinaryFileName), this);
+					return new NameEnvironmentAnswer(reader, fetchAccessRestriction(qualifiedBinaryFileName));
 				}
 			}
 		} catch (ClassFormatException e) {
@@ -272,7 +272,7 @@ public class ClasspathJsr199 extends ClasspathLocation {
 	}
 
 	@Override
-	public ClasspathAnswer findClass(char[] typeName, String qualifiedPackageName,
+	public NameEnvironmentAnswer findClass(char[] typeName, String qualifiedPackageName,
 			String moduleName, String qualifiedBinaryFileName) {
 		//
 		return findClass(typeName, qualifiedPackageName, moduleName, qualifiedBinaryFileName, false);

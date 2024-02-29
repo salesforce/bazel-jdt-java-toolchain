@@ -289,7 +289,7 @@ public void resetPendingModifiers() {
 }
 @Override
 public String toString(int tab) {
-	StringBuffer result = new StringBuffer(tabString(tab));
+	StringBuilder result = new StringBuilder(tabString(tab));
 	result.append("Recovered block:\n"); //$NON-NLS-1$
 	this.blockDeclaration.print(tab + 1, result);
 	if (this.statements != null) {
@@ -448,7 +448,7 @@ public RecoveredElement updateOnOpeningBrace(int braceStart, int braceEnd){
 @Override
 public void updateParseTree(){
 
-	updatedBlock(0, new HashSet<TypeDeclaration>());
+	updatedBlock(0, new HashSet<>());
 }
 /*
  * Record a field declaration

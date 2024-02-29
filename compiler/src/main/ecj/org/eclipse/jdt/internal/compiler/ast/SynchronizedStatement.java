@@ -131,7 +131,7 @@ public void generateCode(BlockScope currentScope, CodeStream codeStream) {
 		this.block.generateCode(this.scope, codeStream);
 		if (this.scope != currentScope) {
 			// close all locals defined in the synchronized block except the secret local
-			codeStream.exitUserScope(this.scope, this.synchroVariable);
+			codeStream.exitUserScope(this.scope, lvb -> lvb != this.synchroVariable);
 		}
 
 		BranchLabel endLabel = new BranchLabel(codeStream);
@@ -216,7 +216,7 @@ public void resolve(BlockScope upperScope) {
 }
 
 @Override
-public StringBuffer printStatement(int indent, StringBuffer output) {
+public StringBuilder printStatement(int indent, StringBuilder output) {
 	printIndent(indent, output);
 	output.append("synchronized ("); //$NON-NLS-1$
 	this.expression.printExpression(0, output).append(')');

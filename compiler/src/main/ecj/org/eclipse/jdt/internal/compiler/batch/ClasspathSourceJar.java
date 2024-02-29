@@ -14,12 +14,12 @@
 package org.eclipse.jdt.internal.compiler.batch;
 
 import java.io.File;
-import java.io.IOException;
 import java.io.InputStream;
+import java.io.IOException;
 import java.util.zip.ZipEntry;
 
-import org.eclipse.jdt.internal.compiler.batch.FileSystem.ClasspathAnswer;
 import org.eclipse.jdt.internal.compiler.env.AccessRuleSet;
+import org.eclipse.jdt.internal.compiler.env.NameEnvironmentAnswer;
 import org.eclipse.jdt.internal.compiler.util.Util;
 
 public class ClasspathSourceJar extends ClasspathJar {
@@ -33,21 +33,16 @@ public class ClasspathSourceJar extends ClasspathJar {
 	}
 
 	@Override
-	public ClasspathAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName, boolean asBinaryOnly) {
+	public NameEnvironmentAnswer findClass(char[] typeName, String qualifiedPackageName, String moduleName, String qualifiedBinaryFileName, boolean asBinaryOnly) {
 		if (!isPackage(qualifiedPackageName, moduleName))
 			return null; // most common case
 
 		ZipEntry sourceEntry = this.zipFile.getEntry(qualifiedBinaryFileName.substring(0, qualifiedBinaryFileName.length() - 6)  + SUFFIX_STRING_java);
 		if (sourceEntry != null) {
 			try {
-				InputStream stream = null;
 				char[] contents = null;
-				try {
-					stream = this.zipFile.getInputStream(sourceEntry);
+				try (InputStream stream = this.zipFile.getInputStream(sourceEntry)) {
 					contents = Util.getInputStreamAsCharArray(stream, this.encoding);
-				} finally {
-					if (stream != null)
-						stream.close();
 				}
 				CompilationUnit compilationUnit = new CompilationUnit(
 					contents,
@@ -55,10 +50,9 @@ public class ClasspathSourceJar extends ClasspathJar {
 					this.encoding,
 					this.destinationPath);
 				compilationUnit.module = this.module == null ? null : this.module.name();
-				return new ClasspathAnswer(
+				return new NameEnvironmentAnswer(
 					compilationUnit,
-					fetchAccessRestriction(qualifiedBinaryFileName),
-					this);
+					fetchAccessRestriction(qualifiedBinaryFileName));
 			} catch (IOException e) {
 				// treat as if source file is missing
 			}

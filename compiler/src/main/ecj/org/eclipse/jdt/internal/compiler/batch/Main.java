@@ -46,7 +46,6 @@ import java.io.LineNumberReader;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.StringReader;
-import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -73,6 +72,7 @@ import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.function.Function;
+import java.util.stream.IntStream;
 
 import org.eclipse.jdt.core.compiler.CategorizedProblem;
 import org.eclipse.jdt.core.compiler.CharOperation;
@@ -405,7 +405,7 @@ public class Main implements ProblemSeverities, SuffixConstants {
 			while ((c = unitSource[end]) == ' ' || c == '\t') end--;
 
 			// copy source
-			StringBuffer buffer = new StringBuffer();
+			StringBuilder buffer = new StringBuilder();
 			buffer.append(unitSource, begin, end - begin + 1);
 			HashMap<String, Object> parameters = new HashMap<>();
 			parameters.put(Logger.VALUE, String.valueOf(buffer));
@@ -571,27 +571,20 @@ public class Main implements ProblemSeverities, SuffixConstants {
 		 * @param e the given exception to log
 		 */
 		public void logException(Exception e) {
-			StringWriter writer = new StringWriter();
-			PrintWriter printWriter = new PrintWriter(writer);
-			e.printStackTrace(printWriter);
-			printWriter.flush();
-			printWriter.close();
-			final String stackTrace = writer.toString();
+			final String stackTrace = Util.getStackTrace(e).toString();
 			if ((this.tagBits & Logger.XML) != 0) {
-				LineNumberReader reader = new LineNumberReader(new StringReader(stackTrace));
-				String line;
-				int i = 0;
 				StringBuilder buffer = new StringBuilder();
 				String message = e.getMessage();
-				if (message != null) {
-					buffer.append(message).append(Util.LINE_SEPARATOR);
-				}
-				try {
+				try (LineNumberReader reader = new LineNumberReader(new StringReader(stackTrace))) {
+					String line;
+					int i = 0;
+					if (message != null) {
+						buffer.append(message).append(Util.LINE_SEPARATOR);
+					}
 					while ((line = reader.readLine()) != null && i < 4) {
 						buffer.append(line).append(Util.LINE_SEPARATOR);
 						i++;
 					}
-					reader.close();
 				} catch (IOException e1) {
 					// ignore
 				}
@@ -2895,7 +2888,7 @@ public void configure(String[] argv) {
 					this.annotationsFromClasspath = true;
 				} else {
 					if (this.annotationPaths == null)
-						this.annotationPaths = new ArrayList<String>();
+						this.annotationPaths = new ArrayList<>();
 					StringTokenizer tokens = new StringTokenizer(currentArg, File.pathSeparator);
 					while (tokens.hasMoreTokens())
 						this.annotationPaths.add(tokens.nextToken());
@@ -3184,7 +3177,7 @@ private IModule extractModuleDesc(String fileName) {
 	if (fileName.toLowerCase().endsWith(IModule.MODULE_INFO_JAVA)) {
 		// this.options may not be completely populated yet, and definitely not
 		// validated. Make sure the source level is set for the parser
-		Map<String,String> opts = new HashMap<String, String>(this.options);
+		Map<String,String> opts = new HashMap<>(this.options);
 		opts.put(CompilerOptions.OPTION_Source, this.options.get(CompilerOptions.OPTION_Compliance));
 		Parser parser = new Parser(new ProblemReporter(getHandlingPolicy(),
 				new CompilerOptions(opts), getProblemFactory()), false);
@@ -3246,7 +3239,7 @@ private static String getAllEncodings(Set<String> encodings) {
 	String[] allEncodings = new String[size];
 	encodings.toArray(allEncodings);
 	Arrays.sort(allEncodings);
-	StringBuffer buffer = new StringBuffer();
+	StringBuilder buffer = new StringBuilder();
 	for (int i = 0; i < size; i++) {
 		if (i > 0) {
 			buffer.append(", "); //$NON-NLS-1$
@@ -3261,23 +3254,13 @@ private void initializeWarnings(String propertiesFile) {
 	if (!file.exists()) {
 		throw new IllegalArgumentException(this.bind("configure.missingwarningspropertiesfile", propertiesFile)); //$NON-NLS-1$
 	}
-	BufferedInputStream stream = null;
 	Properties properties = null;
-	try {
-		stream = new BufferedInputStream(new FileInputStream(propertiesFile));
+	try (BufferedInputStream stream = new BufferedInputStream(new FileInputStream(propertiesFile))) {
 		properties = new Properties();
 		properties.load(stream);
 	} catch(IOException e) {
 		e.printStackTrace();
 		throw new IllegalArgumentException(this.bind("configure.ioexceptionwarningspropertiesfile", propertiesFile)); //$NON-NLS-1$
-	} finally {
-		if (stream != null) {
-			try {
-				stream.close();
-			} catch(IOException e) {
-				// ignore
-			}
-		}
 	}
 	for(Iterator iterator = properties.entrySet().iterator(); iterator.hasNext(); ) {
 		Map.Entry entry = (Map.Entry) iterator.next();
@@ -3380,9 +3363,13 @@ public CompilationUnit[] getCompilationUnits() {
 	String defaultEncoding = this.options.get(CompilerOptions.OPTION_Encoding);
 	if (Util.EMPTY_STRING.equals(defaultEncoding))
 		defaultEncoding = null;
-
+	// sort index by file names so we have a consistent order of compiling / handling them
+	// this is important as the order can influence the way for example lamda numbers are generated
+	int[] orderedIndex = IntStream.range(0, fileCount).boxed().sorted((i1, i2) -> {
+		return this.filenames[i1].compareTo(this.filenames[i2]);
+	}).mapToInt(i -> i).toArray();
 	for (int round = 0; round < 2; round++) {
-		for (int i = 0; i < fileCount; i++) {
+		for (int i : orderedIndex) {
 			char[] charName = this.filenames[i].toCharArray();
 			boolean isModuleInfo = CharOperation.endsWith(charName, TypeConstants.MODULE_INFO_FILE_NAME);
 			if (isModuleInfo == (round==0)) { // 1st round: modules, 2nd round others (to ensure populating pathToModCU well in time)
@@ -3863,7 +3850,7 @@ protected void handleWarningToken(String token, boolean isEnabling) {
 protected void handleErrorToken(String token, boolean isEnabling) {
 	handleErrorOrWarningToken(token, isEnabling, ProblemSeverities.Error);
 }
-protected void setSeverity(String compilerOptions, int severity, boolean isEnabling) {
+private void setSeverity(String compilerOptions, int severity, boolean isEnabling) {
 	if (isEnabling) {
 		switch(severity) {
 			case ProblemSeverities.Error :
@@ -5246,7 +5233,7 @@ protected void setPaths(ArrayList<String> bootclasspaths,
 
 	if (this.releaseVersion != null && this.complianceLevel < jdkLevel) {
 		// TODO: Revisit for access rules
-		allPaths = new ArrayList<Classpath>();
+		allPaths = new ArrayList<>();
 		allPaths.add(
 				FileSystem.getOlderSystemRelease(this.javaHomeCache.getAbsolutePath(), this.releaseVersion, null));
 	} else {

@@ -252,6 +252,15 @@ public class LambdaExpression extends FunctionalExpression implements IPolyExpre
 		return super.kosherDescriptor(currentScope, sam, shouldChatter);
 	}
 
+	public void resolveTypeWithBindings(LocalVariableBinding[] bindings, BlockScope blockScope, boolean skipKosherCheck) {
+		blockScope.include(bindings);
+		try {
+			this.resolveType(blockScope, skipKosherCheck);
+		} finally {
+			blockScope.exclude(bindings);
+		}
+	}
+
 	/* This code is arranged so that we can continue with as much analysis as possible while avoiding
 	 * mine fields that would result in a slew of spurious messages. This method is a merger of:
 	 * @see org.eclipse.jdt.internal.compiler.lookup.MethodScope.createMethod(AbstractMethodDeclaration)
@@ -495,7 +504,7 @@ public class LambdaExpression extends FunctionalExpression implements IPolyExpre
 		if (this.original == this) {
 			this.committed = true; // the original has been resolved
 		}
-		return (argumentsHaveErrors|parametersHaveErrors) ? null : this.resolvedType;
+		return (argumentsHaveErrors || parametersHaveErrors) ? null : this.resolvedType;
 	}
 
 	// check if the given types are parameterized types and if their type arguments
@@ -586,9 +595,9 @@ public class LambdaExpression extends FunctionalExpression implements IPolyExpre
 						this.scope,
 						FlowInfo.DEAD_END);
 
-		// nullity and mark as assigned
+		// nullity, owning and mark as assigned
 		MethodBinding methodWithParameterDeclaration = argumentsTypeElided() ? this.descriptor : this.binding;
-		AbstractMethodDeclaration.analyseArguments(currentScope.environment(), lambdaInfo, this.arguments, methodWithParameterDeclaration);
+		AbstractMethodDeclaration.analyseArguments(currentScope.environment(), lambdaInfo, flowContext, this.arguments, methodWithParameterDeclaration);
 
 		if (this.arguments != null) {
 			for (int i = 0, count = this.arguments.length; i < count; i++) {
@@ -745,11 +754,11 @@ public class LambdaExpression extends FunctionalExpression implements IPolyExpre
 	}
 
 	@Override
-	public StringBuffer printExpression(int tab, StringBuffer output) {
+	public StringBuilder printExpression(int tab, StringBuilder output) {
 		return printExpression(tab, output, false);
 	}
 
-	public StringBuffer printExpression(int tab, StringBuffer output, boolean makeShort) {
+	public StringBuilder printExpression(int tab, StringBuilder output, boolean makeShort) {
 		int parenthesesCount = (this.bits & ASTNode.ParenthesizedMASK) >> ASTNode.ParenthesizedSHIFT;
 		String suffix = ""; //$NON-NLS-1$
 		for(int i = 0; i < parenthesesCount; i++) {
@@ -1008,7 +1017,7 @@ public class LambdaExpression extends FunctionalExpression implements IPolyExpre
 
 				targetType = copy.expectedType; // possibly updated local types
 				if (this.copiesPerTargetType == null)
-					this.copiesPerTargetType = new HashMap<TypeBinding, LambdaExpression>();
+					this.copiesPerTargetType = new HashMap<>();
 				this.copiesPerTargetType.put(targetType, copy);
 			}
 			if (!requireExceptionAnalysis)
@@ -1320,6 +1329,7 @@ public class LambdaExpression extends FunctionalExpression implements IPolyExpre
 				argBinding.recordInitializationStartPC(0);
 			}
 		}
+		codeStream.pushPatternAccessTrapScope(this.scope);
 		if (this.body instanceof Block) {
 			this.body.generateCode(this.scope, codeStream);
 			if ((this.bits & ASTNode.NeedFreeReturn) != 0) {
@@ -1334,6 +1344,9 @@ public class LambdaExpression extends FunctionalExpression implements IPolyExpre
 				codeStream.generateReturnBytecode(expression);
 			}
 		}
+		// See https://github.com/eclipse-jdt/eclipse.jdt.core/issues/1796#issuecomment-1933458054
+		codeStream.exitUserScope(this.scope, lvb -> !lvb.isParameter());
+		codeStream.handleRecordAccessorExceptions(this.scope);
 		// local variable attributes
 		codeStream.exitUserScope(this.scope);
 		codeStream.recordPositionsFrom(0, this.sourceEnd); // WAS declarationSourceEnd.

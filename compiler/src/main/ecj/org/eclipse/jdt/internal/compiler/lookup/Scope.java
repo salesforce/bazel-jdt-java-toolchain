@@ -175,7 +175,7 @@ public abstract class Scope {
 
 	/**
 	 * Returns a type where either all variables or specific ones got discarded.
-	 * e.g. List<E> (discarding <E extends Enum<E>) will return:  List<? extends Enum<?>>
+	 * e.g. {@code List<E> (discarding <E extends Enum<E>)} will return: {@code List<? extends Enum<?>>}
 	 */
 	public static TypeBinding convertEliminatingTypeVariables(TypeBinding originalType, ReferenceBinding genericType, int rank, Set eliminatedVariables) {
 		if ((originalType.tagBits & TagBits.HasTypeVariable) != 0) {
@@ -986,8 +986,8 @@ public abstract class Scope {
 				nextBound: for (int j = 0, boundLength = boundRefs.length; j < boundLength; j++) {
 					typeRef = boundRefs[j];
 					superType = this.kind == METHOD_SCOPE
-						? typeRef.resolveType((BlockScope)this, false)
-						: typeRef.resolveType((ClassScope)this);
+						? typeRef.resolveType((BlockScope)this, false, Binding.DefaultLocationTypeBound)
+						: typeRef.resolveType((ClassScope)this, Binding.DefaultLocationTypeBound);
 					if (superType == null) {
 						typeVariable.tagBits |= TagBits.HierarchyHasProblems;
 						continue nextBound;
@@ -1160,18 +1160,6 @@ public abstract class Scope {
 		return null; // may answer null if no method around
 	}
 
-	public final MethodScope lexicallyEnclosingMethodScope() {
-		Scope scope = this;
-		while ((scope = scope.parent) != null) {
-			if (scope instanceof MethodScope) {
-				MethodScope methodScope = (MethodScope) scope;
-				if (methodScope.referenceContext instanceof AbstractMethodDeclaration)
-					return (MethodScope) scope;
-			}
-		}
-		return null; // may answer null if no method around
-	}
-
 	public final MethodScope enclosingLambdaScope() {
 		Scope scope = this;
 		while ((scope = scope.parent) != null) {
@@ -1250,7 +1238,7 @@ public abstract class Scope {
 		int startFoundSize = found.size;
 		final boolean sourceLevel18 = this.compilerOptions().sourceLevel >= ClassFileConstants.JDK1_8;
 		ReferenceBinding currentType = classHierarchyStart;
-		List<TypeBinding> visitedTypes = new ArrayList<TypeBinding>();
+		List<TypeBinding> visitedTypes = new ArrayList<>();
 		while (currentType != null) {
 			findMethodInSuperInterfaces(currentType, selector, found, visitedTypes, invocationSite);
 			currentType = currentType.superclass();
@@ -1681,7 +1669,7 @@ public abstract class Scope {
 		ObjectVector found = new ObjectVector(3);
 		CompilationUnitScope unitScope = compilationUnitScope();
 		unitScope.recordTypeReferences(argumentTypes);
-		List<TypeBinding> visitedTypes = new ArrayList<TypeBinding>();
+		List<TypeBinding> visitedTypes = new ArrayList<>();
 		if (receiverTypeIsInterface) {
 			unitScope.recordTypeReference(receiverType);
 			MethodBinding[] receiverMethods = receiverType.getMethods(selector, argumentTypes.length);
@@ -2979,6 +2967,11 @@ public abstract class Scope {
 		unitScope.recordQualifiedReference(TypeConstants.JAVA_LANG_INVOKE_STRING_CONCAT_FACTORY);
 		return unitScope.environment.getResolvedJavaBaseType(TypeConstants.JAVA_LANG_INVOKE_STRING_CONCAT_FACTORY, this);
 	}
+	public final ReferenceBinding getJavaLangRuntimeTemplateRuntimeBootstraps() {
+		CompilationUnitScope unitScope = compilationUnitScope();
+		unitScope.recordQualifiedReference(TypeConstants.JAVA_LANG_RUNTIME_TEMPLATERUNTIME);
+		return unitScope.environment.getResolvedJavaBaseType(TypeConstants.JAVA_LANG_RUNTIME_TEMPLATERUNTIME, this);
+	}
 	public final ReferenceBinding getJavaLangInvokeLambdaMetafactory() {
 		CompilationUnitScope unitScope = compilationUnitScope();
 		unitScope.recordQualifiedReference(TypeConstants.JAVA_LANG_INVOKE_LAMBDAMETAFACTORY);
@@ -3057,6 +3050,18 @@ public abstract class Scope {
 		CompilationUnitScope unitScope = compilationUnitScope();
 		unitScope.recordQualifiedReference(TypeConstants.JAVA_LANG_STRINGBUILDER);
 		return unitScope.environment.getResolvedJavaBaseType(TypeConstants.JAVA_LANG_STRINGBUILDER, this);
+	}
+
+	public TypeBinding getJavaLangStringTemplate() {
+		CompilationUnitScope unitScope = compilationUnitScope();
+		unitScope.recordQualifiedReference(TypeConstants.JAVA_LANG_STRINGTEMPLATE);
+		return unitScope.environment.getResolvedJavaBaseType(TypeConstants.JAVA_LANG_STRINGTEMPLATE, this);
+	}
+
+	public final ReferenceBinding getJavaLangStringTemplateProcessor() {
+		CompilationUnitScope unitScope = compilationUnitScope();
+		unitScope.recordQualifiedReference(TypeConstants.JAVA_LANG_STRINGTEMPLATE_PROCESSOR);
+		return unitScope.environment.getResolvedJavaBaseType(TypeConstants.JAVA_LANG_STRINGTEMPLATE_PROCESSOR, this);
 	}
 	public final ReferenceBinding getJavaLangThrowable() {
 		CompilationUnitScope unitScope = compilationUnitScope();
@@ -4173,7 +4178,7 @@ public abstract class Scope {
 	// 15.12.2
 	/**
 	 * Returns VoidBinding if types have no intersection (e.g. 2 unrelated interfaces), or null if
-	 * no common supertype (e.g. List<String> and List<Exception>), or the intersection type if possible
+	 * no common supertype (e.g. {@code List<String>} and {@code List<Exception>}), or the intersection type if possible
 	 */
 	public TypeBinding lowerUpperBound(TypeBinding[] types) {
 		int typeLength = types.length;

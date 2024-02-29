@@ -126,7 +126,7 @@ public class ArrayTypeReference extends SingleTypeReference {
 	}
 
 	@Override
-	public StringBuffer printExpression(int indent, StringBuffer output){
+	public StringBuilder printExpression(int indent, StringBuilder output){
 
 		super.printExpression(indent, output);
 		if ((this.bits & IsVarArgs) != 0) {
@@ -218,15 +218,13 @@ public class ArrayTypeReference extends SingleTypeReference {
 		LookupEnvironment environment = scope.environment();
 		if (environment.usesNullTypeAnnotations()
 				&& scope.hasDefaultNullnessFor(Binding.DefaultLocationArrayContents, sourceStart)) {
-			AnnotationBinding nonNullAnnotation = environment.getNonNullAnnotation();
-			typeBinding = addNonNullToDimensions(scope, typeBinding, nonNullAnnotation, dimensions);
+			typeBinding = addNonNullToDimensions(scope, typeBinding, environment.getNonNullAnnotation(), dimensions);
 
 			TypeBinding leafComponentType = typeBinding.leafComponentType();
 			if ((leafComponentType.tagBits & TagBits.AnnotationNullMASK) == 0 && leafComponentType.acceptsNonNullDefault()) {
 				if (leafConsumer != null)
 					leafConsumer.accept(leafComponentType);
-				TypeBinding nonNullLeafComponentType = scope.environment().createAnnotatedType(leafComponentType,
-						new AnnotationBinding[] { nonNullAnnotation });
+				TypeBinding nonNullLeafComponentType = scope.environment().createNonNullAnnotatedType(leafComponentType);
 				typeBinding = scope.createArrayType(nonNullLeafComponentType, typeBinding.dimensions(),
 						typeBinding.getTypeAnnotations());
 			}

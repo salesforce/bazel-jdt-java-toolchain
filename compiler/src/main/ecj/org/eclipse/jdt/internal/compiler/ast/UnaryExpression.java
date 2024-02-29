@@ -182,7 +182,7 @@ public class UnaryExpression extends OperatorExpression {
 
 	/**
 	 * Boolean operator code generation
-	 *	Optimized operations are: &&, ||, <, <=, >, >=, &, |, ^
+	 *	Optimized operations are: {@code &&, ||, <, <=, >, >=, &, |, ^ }
 	 */
 	@Override
 	public void generateOptimizedBoolean(
@@ -219,28 +219,10 @@ public class UnaryExpression extends OperatorExpression {
 	}
 
 	@Override
-	public StringBuffer printExpressionNoParenthesis(int indent, StringBuffer output) {
+	public StringBuilder printExpressionNoParenthesis(int indent, StringBuilder output) {
 
 		output.append(operatorToString()).append(' ');
 		return this.expression.printExpression(0, output);
-	}
-	@Override
-	public void collectPatternVariablesToScope(LocalVariableBinding[] variables, BlockScope scope) {
-		this.expression.collectPatternVariablesToScope(variables, scope);
-		if (((this.bits & OperatorMASK) >> OperatorSHIFT) == NOT) {
-			variables = this.expression.getPatternVariablesWhenTrue();
-			if (variables != null)
-				this.addPatternVariablesWhenFalse(variables);
-
-			variables = this.expression.getPatternVariablesWhenFalse();
-			if (variables != null)
-				this.addPatternVariablesWhenTrue(variables);
-		} else {
-			variables = this.expression.getPatternVariablesWhenTrue();
-			this.addPatternVariablesWhenTrue(variables);
-			variables = this.expression.getPatternVariablesWhenFalse();
-			this.addPatternVariablesWhenFalse(variables);
-		}
 	}
 	@Override
 	public TypeBinding resolveType(BlockScope scope) {
@@ -341,6 +323,19 @@ public class UnaryExpression extends OperatorExpression {
 	public LocalDeclaration getPatternVariable() {
 		return this.expression.getPatternVariable();
 	}
+
+	@Override
+	public LocalVariableBinding[] bindingsWhenFalse() {
+		return ((this.bits & OperatorMASK) >> OperatorSHIFT) == NOT ?
+				this.expression.bindingsWhenTrue(): NO_VARIABLES;
+	}
+
+	@Override
+	public LocalVariableBinding[] bindingsWhenTrue() {
+		return ((this.bits & OperatorMASK) >> OperatorSHIFT) == NOT ?
+				this.expression.bindingsWhenFalse(): NO_VARIABLES;
+	}
+
 
 	@Override
 	public void traverse(

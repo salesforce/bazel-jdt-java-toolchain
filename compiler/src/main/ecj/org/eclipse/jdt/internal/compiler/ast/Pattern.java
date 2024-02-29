@@ -13,31 +13,23 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.compiler.ast;
 
-import java.util.function.Supplier;
-
 import org.eclipse.jdt.internal.compiler.ASTVisitor;
 import org.eclipse.jdt.internal.compiler.codegen.BranchLabel;
 import org.eclipse.jdt.internal.compiler.codegen.CodeStream;
 import org.eclipse.jdt.internal.compiler.lookup.BlockScope;
-import org.eclipse.jdt.internal.compiler.lookup.LocalVariableBinding;
 import org.eclipse.jdt.internal.compiler.lookup.MethodBinding;
 import org.eclipse.jdt.internal.compiler.lookup.TypeBinding;
 
 public abstract class Pattern extends Expression {
 
 	/* package */ boolean isTotalTypeNode = false;
-	static final String SECRET_PATTERN_VARIABLE_NAME = " secretPatternVariable"; //$NON-NLS-1$
-
-	public LocalVariableBinding secretPatternVariable = null;
-
-	public Boolean containsTypeElidedPatternVar = null;
 
 	private Pattern enclosingPattern;
 	protected MethodBinding accessorMethod;
 	/* package */ BranchLabel elseTarget;
 	/* package */ BranchLabel thenTarget;
 
-	public int nestingLevel = 0;
+	public int index = -1; // index of this in enclosing record pattern, or -1 for top level patterns
 
 	@Override
 	public boolean containsPatternVariable() {
@@ -48,14 +40,13 @@ public abstract class Pattern extends Expression {
 			@Override
 			public boolean visit(TypePattern typePattern, BlockScope blockScope) {
 				 this.hasPatternVar = typePattern.local != null;
-				 this.typeElidedVar |= typePattern.getType().isTypeNameVar(blockScope);
+				 this.typeElidedVar |= typePattern.getType() == null || typePattern.getType().isTypeNameVar(blockScope);
 				 return !(this.hasPatternVar && this.typeElidedVar);
 			}
  		}
 
 		PatternVariablesVisitor pvv = new PatternVariablesVisitor();
 		this.traverse(pvv, (BlockScope) null);
-		this.containsTypeElidedPatternVar = pvv.typeElidedVar;
 		return pvv.hasPatternVar;
 	}
 
@@ -69,9 +60,8 @@ public abstract class Pattern extends Expression {
 	/**
 	 * @param enclosingPattern the enclosingPattern to set
 	 */
-	public void setEnclosingPattern(Pattern enclosingPattern) {
+	public void setEnclosingPattern(RecordPattern enclosingPattern) {
 		this.enclosingPattern = enclosingPattern;
-		this.nestingLevel = enclosingPattern.nestingLevel+1;
 	}
 	/**
 	 * Implement the rules in the spec under 14.11.1.1 Exhaustive Switch Blocks
@@ -80,16 +70,6 @@ public abstract class Pattern extends Expression {
 	 */
 	public boolean coversType(TypeBinding type) {
 		return false;
-	}
-	public TypeBinding resolveAtType(BlockScope scope, TypeBinding type) {
-		return null;
-	}
-	@Override
-	public TypeBinding resolveType(BlockScope scope) {
-		return resolveType(scope, true);
-	}
-	public TypeBinding resolveType(BlockScope scope, boolean isPatternVariable) {
-		return null;
 	}
 	public boolean isAlwaysTrue() {
 		return true;
@@ -112,27 +92,17 @@ public abstract class Pattern extends Expression {
 		// nothing by default
 	}
 	public abstract void generateOptimizedBoolean(BlockScope currentScope, CodeStream codeStream, BranchLabel trueLabel, BranchLabel falseLabel);
-	protected abstract void generatePatternVariable(BlockScope currentScope, CodeStream codeStream, BranchLabel trueLabel, BranchLabel falseLabel);
-	protected abstract void wrapupGeneration(CodeStream codeStream);
 
 	public TypeReference getType() {
 		return null;
 	}
-	public abstract void resolveWithExpression(BlockScope scope, Expression expression);
 
-	public void setTargetSupplier(Supplier<BranchLabel> targetSupplier) {
-		// default implementation does nothing
-	}
 	protected abstract boolean isPatternTypeCompatible(TypeBinding other, BlockScope scope);
 
 	public abstract boolean dominates(Pattern p);
 
-	public Pattern primary() {
-		return this;
-	}
-
 	@Override
-	public StringBuffer print(int indent, StringBuffer output) {
+	public StringBuilder print(int indent, StringBuilder output) {
 		return this.printExpression(indent, output);
 	}
 }

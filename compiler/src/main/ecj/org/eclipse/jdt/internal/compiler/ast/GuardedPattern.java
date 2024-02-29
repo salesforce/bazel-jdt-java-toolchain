@@ -39,17 +39,16 @@ public class GuardedPattern extends Pattern {
 		this.sourceStart = primaryPattern.sourceStart;
 		this.sourceEnd = conditionalAndExpression.sourceEnd;
 	}
-	@Override
-	public void collectPatternVariablesToScope(LocalVariableBinding[] variables, BlockScope scope) {
-		this.primaryPattern.collectPatternVariablesToScope(variables, scope);
-		addPatternVariablesWhenTrue(this.primaryPattern.getPatternVariablesWhenTrue());
-		this.condition.collectPatternVariablesToScope(getPatternVariablesWhenTrue(), scope);
-		addPatternVariablesWhenTrue(this.condition.getPatternVariablesWhenTrue());
-	}
 
 	@Override
 	public LocalDeclaration getPatternVariable() {
 		return this.primaryPattern.getPatternVariable();
+	}
+
+	@Override
+	public LocalVariableBinding[] bindingsWhenTrue() {
+		return LocalVariableBinding.merge(this.primaryPattern.bindingsWhenTrue(),
+											this.condition.bindingsWhenTrue());
 	}
 
 	@Override
@@ -107,15 +106,6 @@ public class GuardedPattern extends Pattern {
 	public boolean coversType(TypeBinding type) {
 		return this.primaryPattern.coversType(type) && isAlwaysTrue();
 	}
-	@Override
-	public Pattern primary() {
-		return this.primaryPattern;
-	}
-
-	@Override
-	public void resolve(BlockScope scope) {
-		this.resolveType(scope);
-	}
 
 	@Override
 	public boolean dominates(Pattern p) {
@@ -132,7 +122,7 @@ public class GuardedPattern extends Pattern {
 		// The following call (as opposed to resolveType() ensures that
 		// the implicitConversion code is set properly and thus the correct
 		// unboxing calls are generated.
-		this.condition.resolveTypeExpecting(scope, TypeBinding.BOOLEAN);
+		this.condition.resolveTypeExpectingWithBindings(this.primaryPattern.bindingsWhenTrue(), scope, TypeBinding.BOOLEAN);
 		Constant cst = this.condition.optimizedBooleanConstant();
 		if (cst.typeID() == TypeIds.T_boolean && cst.booleanValue() == false) {
 			scope.problemReporter().falseLiteralInGuard(this.condition);
@@ -162,17 +152,7 @@ public class GuardedPattern extends Pattern {
 	}
 
 	@Override
-	public TypeBinding resolveAtType(BlockScope scope, TypeBinding u) {
-		if (this.resolvedType == null || this.primaryPattern == null)
-			return null;
-		if (this.primaryPattern.coversType(u))
-			return this.primaryPattern.resolveAtType(scope, u);
-
-		return this.resolvedType; //else leave the pattern untouched for now.
-	}
-
-	@Override
-	public StringBuffer printExpression(int indent, StringBuffer output) {
+	public StringBuilder printExpression(int indent, StringBuilder output) {
 		this.primaryPattern.print(indent, output).append(" when "); //$NON-NLS-1$
 		return this.condition.print(indent, output);
 	}
@@ -198,20 +178,7 @@ public class GuardedPattern extends Pattern {
 		this.primaryPattern.resumeVariables(codeStream, scope);
 	}
 	@Override
-	public void resolveWithExpression(BlockScope scope, Expression expression) {
-		this.primaryPattern.resolveWithExpression(scope, expression);
-	}
-	@Override
 	protected boolean isPatternTypeCompatible(TypeBinding other, BlockScope scope) {
 		return this.primaryPattern.isPatternTypeCompatible(other, scope);
-	}
-	@Override
-	public void wrapupGeneration(CodeStream codeStream) {
-		this.primaryPattern.wrapupGeneration(codeStream);
-	}
-	@Override
-	protected void generatePatternVariable(BlockScope currentScope, CodeStream codeStream, BranchLabel trueLabel,
-			BranchLabel falseLabel) {
-		this.primaryPattern.generatePatternVariable(currentScope, codeStream, trueLabel, falseLabel);
 	}
 }

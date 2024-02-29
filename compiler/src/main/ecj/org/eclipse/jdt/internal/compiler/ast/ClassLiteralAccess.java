@@ -73,7 +73,7 @@ public class ClassLiteralAccess extends Expression {
 	}
 
 	@Override
-	public StringBuffer printExpression(int indent, StringBuffer output) {
+	public StringBuilder printExpression(int indent, StringBuilder output) {
 
 		return this.type.print(0, output).append(".class"); //$NON-NLS-1$
 	}
@@ -119,7 +119,7 @@ public class ClassLiteralAccess extends Expression {
 				boxedType = scope.boxing(this.targetType);
 			}
 			if (environment.usesNullTypeAnnotations())
-				boxedType = environment.createAnnotatedType(boxedType, new AnnotationBinding[] { environment.getNonNullAnnotation() });
+				boxedType = environment.createNonNullAnnotatedType(boxedType);
 			this.resolvedType = environment.createParameterizedType(classType, new TypeBinding[]{ boxedType }, null/*not a member*/);
 		} else {
 			this.resolvedType = classType;

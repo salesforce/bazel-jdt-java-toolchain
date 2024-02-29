@@ -325,7 +325,7 @@ public int sourceEnd(){
 }
 @Override
 public String toString(int tab) {
-	StringBuffer result = new StringBuffer(tabString(tab));
+	StringBuilder result = new StringBuilder(tabString(tab));
 	result.append("Recovered method:\n"); //$NON-NLS-1$
 	this.methodDeclaration.print(tab + 1, result);
 	if (this.annotations != null) {
@@ -599,7 +599,7 @@ public RecoveredElement updateOnOpeningBrace(int braceStart, int braceEnd){
 }
 @Override
 public void updateParseTree(){
-	updatedMethodDeclaration(0, new HashSet<TypeDeclaration>());
+	updatedMethodDeclaration(0, new HashSet<>());
 }
 /*
  * Update the declarationSourceEnd of the corresponding parse node

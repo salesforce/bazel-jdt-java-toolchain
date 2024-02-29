@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2000, 2021 IBM Corporation and others.
+ * Copyright (c) 2000, 2024 IBM Corporation and others.
  *
  * This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License 2.0
@@ -69,9 +69,28 @@ public class MethodBinding extends Binding {
 	// Used only for constructors
 	protected AnnotationBinding [] typeAnnotations = Binding.NO_ANNOTATIONS;
 
-	/** Store nullness information from annotation (incl. applicable default). */
-	public Boolean[] parameterNonNullness;  // TRUE means @NonNull declared, FALSE means @Nullable declared, null means nothing declared
 	public int defaultNullness; // for null *type* annotations
+
+	/** Store flow-related information from declaration annotations (nullness and owning) (incl. applicable default). */
+	public byte[] parameterFlowBits;
+	// bit constant per each cell of the above:
+	public static byte PARAM_NONNULL = 1;
+	public static byte PARAM_NULLABLE = 2;
+	public static byte PARAM_NULLITY = (byte) (PARAM_NONNULL | PARAM_NULLABLE);
+	public static byte PARAM_OWNING = 4;
+	public static byte PARAM_NOTOWNING = 8;
+
+	public static byte flowBitFromAnnotationTagBit(long tagBit) {
+		if (tagBit == TagBits.AnnotationNonNull)
+			return PARAM_NONNULL;
+		if (tagBit == TagBits.AnnotationNullable)
+			return PARAM_NULLABLE;
+		if (tagBit == TagBits.AnnotationOwning)
+			return PARAM_OWNING;
+		if (tagBit == TagBits.AnnotationNotOwning)
+			return PARAM_NOTOWNING;
+		return 0;
+	}
 
 	/** Store parameter names from MethodParameters attribute (incl. applicable default). */
 	public char[][] parameterNames = Binding.NO_PARAMETER_NAMES;
@@ -503,23 +522,24 @@ public final char[] constantPoolName() {
  * After method verifier has finished, fill in missing @NonNull specification from the applicable default.
  */
 protected void fillInDefaultNonNullness(AbstractMethodDeclaration sourceMethod, boolean needToApplyReturnNonNullDefault, ParameterNonNullDefaultProvider needToApplyParameterNonNullDefault) {
-	if (this.parameterNonNullness == null)
-		this.parameterNonNullness = new Boolean[this.parameters.length];
+	if (this.parameterFlowBits == null)
+		this.parameterFlowBits = new byte[this.parameters.length];
 	boolean added = false;
-	int length = this.parameterNonNullness.length;
+	int length = this.parameterFlowBits.length;
 	for (int i = 0; i < length; i++) {
 		if(!needToApplyParameterNonNullDefault.hasNonNullDefaultForParam(i)) {
 			continue;
 		}
 		if (this.parameters[i].isBaseType())
 			continue;
-		if (this.parameterNonNullness[i] == null) {
+		int nullity = this.parameterFlowBits[i] & PARAM_NULLITY;
+		if (nullity == 0) {
 			added = true;
-			this.parameterNonNullness[i] = Boolean.TRUE;
+			this.parameterFlowBits[i] |= PARAM_NONNULL;
 			if (sourceMethod != null) {
 				sourceMethod.arguments[i].binding.tagBits |= TagBits.AnnotationNonNull;
 			}
-		} else if (sourceMethod != null && this.parameterNonNullness[i].booleanValue()) {
+		} else if (sourceMethod != null && (this.parameterFlowBits[i] & PARAM_NONNULL) != 0) {
 			sourceMethod.scope.problemReporter().nullAnnotationIsRedundant(sourceMethod, i);
 		}
 	}
@@ -557,7 +577,7 @@ protected void fillInDefaultNonNullness18(AbstractMethodDeclaration sourceMethod
 			if (existing == 0L) {
 				added = true;
 				if (!parameter.isBaseType()) {
-					this.parameters[i] = env.createAnnotatedType(parameter, new AnnotationBinding[]{env.getNonNullAnnotation()});
+					this.parameters[i] = env.createNonNullAnnotatedType(parameter);
 					if (sourceMethod != null)
 						sourceMethod.arguments[i].binding.type = this.parameters[i];
 				}
@@ -592,12 +612,12 @@ public MethodBinding findOriginalInheritedMethod(MethodBinding inheritedMethod) 
 }
 
 /**
- * <pre>
+ * <pre>{@code
  *<typeParam1 ... typeParamM>(param1 ... paramN)returnType thrownException1 ... thrownExceptionP
  * T foo(T t) throws X<T>   --->   (TT;)TT;LX<TT;>;
  * void bar(X<T> t)   -->   (LX<TT;>;)V
  * <T> void bar(X<T> t)   -->  <T:Ljava.lang.Object;>(LX<TT;>;)V
- * </pre>
+ * }</pre>
  */
 public char[] genericSignature() {
 	if ((this.modifiers & ExtraCompilerModifiers.AccGenericSignature) == 0) return null;
@@ -972,7 +992,7 @@ public MethodBinding original() {
 }
 
 /**
- * Strips one level of parameterization, so if both class & method are parameterized,
+ * Strips one level of parameterization, so if both class and method are parameterized,
  * leave the class parameters in place.
  */
 public MethodBinding shallowOriginal() {
@@ -1071,8 +1091,11 @@ public char[] shortReadableName() {
 public final char[] signature() /* (ILjava/lang/Thread;)Ljava/lang/Object; */ {
 	if (this.signature != null)
 		return this.signature;
+	return computeSignature(null);
+}
 
-	StringBuilder buffer = new StringBuilder(this.parameters.length + 1 * 20);
+public final char[] computeSignature(ClassFile classFile) {
+	StringBuilder buffer = new StringBuilder((this.parameters.length + 1) * 20);
 	buffer.append('(');
 
 	TypeBinding[] targetParameters = this.parameters;
@@ -1081,24 +1104,39 @@ public final char[] signature() /* (ILjava/lang/Thread;)Ljava/lang/Object; */ {
 		buffer.append(ConstantPool.JavaLangStringSignature);
 		buffer.append(TypeBinding.INT.signature());
 	}
-	boolean needSynthetics = isConstructor && this.declaringClass.isNestedType();
+	boolean needSynthetics = isConstructor
+			&& this.declaringClass.isNestedType()
+			&& !this.declaringClass.isStatic();
 	if (needSynthetics) {
 		// take into account the synthetic argument type signatures as well
 		ReferenceBinding[] syntheticArgumentTypes = this.declaringClass.syntheticEnclosingInstanceTypes();
 		if (syntheticArgumentTypes != null) {
 			for (int i = 0, count = syntheticArgumentTypes.length; i < count; i++) {
-				buffer.append(syntheticArgumentTypes[i].signature());
+				ReferenceBinding syntheticArgumentType = syntheticArgumentTypes[i];
+				if ((syntheticArgumentType.tagBits & TagBits.ContainsNestedTypeReferences) != 0) {
+					this.tagBits |= TagBits.ContainsNestedTypeReferences;
+					if (classFile != null)
+						Util.recordNestedType(classFile, syntheticArgumentType);
+				}
+				buffer.append(syntheticArgumentType.signature());
 			}
 		}
 
-		if ((this instanceof SyntheticMethodBinding) && (!this.declaringClass.isRecord())) {
+		if (this instanceof SyntheticMethodBinding) {
 			targetParameters = ((SyntheticMethodBinding)this).targetMethod.parameters;
 		}
 	}
 
 	if (targetParameters != Binding.NO_PARAMETERS) {
-		for (int i = 0; i < targetParameters.length; i++) {
-			buffer.append(targetParameters[i].signature());
+		for (int i = 0, max = targetParameters.length; i < max; i++) {
+			TypeBinding targetParameter = targetParameters[i];
+			TypeBinding leafTargetParameterType = targetParameter.leafComponentType();
+			if ((leafTargetParameterType.tagBits & TagBits.ContainsNestedTypeReferences) != 0) {
+				this.tagBits |= TagBits.ContainsNestedTypeReferences;
+				if (classFile != null)
+					Util.recordNestedType(classFile, leafTargetParameterType);
+			}
+			buffer.append(targetParameter.signature());
 		}
 	}
 	if (needSynthetics) {
@@ -1109,18 +1147,33 @@ public final char[] signature() /* (ILjava/lang/Thread;)Ljava/lang/Object; */ {
 		}
 		// move the extra padding arguments of the synthetic constructor invocation to the end
 		for (int i = targetParameters.length, extraLength = this.parameters.length; i < extraLength; i++) {
-			buffer.append(this.parameters[i].signature());
+			TypeBinding parameter = this.parameters[i];
+			TypeBinding leafParameterType = parameter.leafComponentType();
+			if ((leafParameterType.tagBits & TagBits.ContainsNestedTypeReferences) != 0) {
+				this.tagBits |= TagBits.ContainsNestedTypeReferences;
+				if (classFile != null)
+					Util.recordNestedType(classFile, leafParameterType);
+			}
+			buffer.append(parameter.signature());
 		}
 	}
 	buffer.append(')');
-	if (this.returnType != null)
+	if (this.returnType != null) {
+		TypeBinding ret = this.returnType.leafComponentType();
+		if ((ret.tagBits & TagBits.ContainsNestedTypeReferences) != 0) {
+			this.tagBits |= TagBits.ContainsNestedTypeReferences;
+			if (classFile != null)
+				Util.recordNestedType(classFile, ret);
+		}
 		buffer.append(this.returnType.signature());
+	}
 	int nameLength = buffer.length();
 	this.signature = new char[nameLength];
 	buffer.getChars(0, nameLength, this.signature, 0);
 
 	return this.signature;
 }
+
 /*
  * This method is used to record references to nested types inside the method signature.
  * This is the one that must be used during code generation.
@@ -1181,79 +1234,7 @@ public char[] signature(ClassFile classFile) {
 		return this.signature;
 	}
 
-	StringBuilder buffer = new StringBuilder((this.parameters.length + 1) * 20);
-	buffer.append('(');
-
-	TypeBinding[] targetParameters = this.parameters;
-	boolean isConstructor = isConstructor();
-	if (isConstructor && this.declaringClass.isEnum()) { // insert String name,int ordinal
-		buffer.append(ConstantPool.JavaLangStringSignature);
-		buffer.append(TypeBinding.INT.signature());
-	}
-	boolean needSynthetics = isConstructor
-			&& this.declaringClass.isNestedType()
-			&& !this.declaringClass.isStatic();
-	if (needSynthetics) {
-		// take into account the synthetic argument type signatures as well
-		ReferenceBinding[] syntheticArgumentTypes = this.declaringClass.syntheticEnclosingInstanceTypes();
-		if (syntheticArgumentTypes != null) {
-			for (int i = 0, count = syntheticArgumentTypes.length; i < count; i++) {
-				ReferenceBinding syntheticArgumentType = syntheticArgumentTypes[i];
-				if ((syntheticArgumentType.tagBits & TagBits.ContainsNestedTypeReferences) != 0) {
-					this.tagBits |= TagBits.ContainsNestedTypeReferences;
-					Util.recordNestedType(classFile, syntheticArgumentType);
-				}
-				buffer.append(syntheticArgumentType.signature());
-			}
-		}
-
-		if (this instanceof SyntheticMethodBinding) {
-			targetParameters = ((SyntheticMethodBinding)this).targetMethod.parameters;
-		}
-	}
-
-	if (targetParameters != Binding.NO_PARAMETERS) {
-		for (int i = 0, max = targetParameters.length; i < max; i++) {
-			TypeBinding targetParameter = targetParameters[i];
-			TypeBinding leafTargetParameterType = targetParameter.leafComponentType();
-			if ((leafTargetParameterType.tagBits & TagBits.ContainsNestedTypeReferences) != 0) {
-				this.tagBits |= TagBits.ContainsNestedTypeReferences;
-				Util.recordNestedType(classFile, leafTargetParameterType);
-			}
-			buffer.append(targetParameter.signature());
-		}
-	}
-	if (needSynthetics) {
-		SyntheticArgumentBinding[] syntheticOuterArguments = this.declaringClass.syntheticOuterLocalVariables();
-		int count = syntheticOuterArguments == null ? 0 : syntheticOuterArguments.length;
-		for (int i = 0; i < count; i++) {
-			buffer.append(syntheticOuterArguments[i].type.signature());
-		}
-		// move the extra padding arguments of the synthetic constructor invocation to the end
-		for (int i = targetParameters.length, extraLength = this.parameters.length; i < extraLength; i++) {
-			TypeBinding parameter = this.parameters[i];
-			TypeBinding leafParameterType = parameter.leafComponentType();
-			if ((leafParameterType.tagBits & TagBits.ContainsNestedTypeReferences) != 0) {
-				this.tagBits |= TagBits.ContainsNestedTypeReferences;
-				Util.recordNestedType(classFile, leafParameterType);
-			}
-			buffer.append(parameter.signature());
-		}
-	}
-	buffer.append(')');
-	if (this.returnType != null) {
-		TypeBinding ret = this.returnType.leafComponentType();
-		if ((ret.tagBits & TagBits.ContainsNestedTypeReferences) != 0) {
-			this.tagBits |= TagBits.ContainsNestedTypeReferences;
-			Util.recordNestedType(classFile, ret);
-		}
-		buffer.append(this.returnType.signature());
-	}
-	int nameLength = buffer.length();
-	this.signature = new char[nameLength];
-	buffer.getChars(0, nameLength, this.signature, 0);
-
-	return this.signature;
+	return computeSignature(classFile);
 }
 public final int sourceEnd() {
 	AbstractMethodDeclaration method = sourceMethod();
@@ -1308,7 +1289,7 @@ public MethodBinding tiebreakMethod() {
 }
 @Override
 public String toString() {
-	StringBuffer output = new StringBuffer(10);
+	StringBuilder output = new StringBuilder(10);
 	if ((this.modifiers & ExtraCompilerModifiers.AccUnresolved) != 0) {
 		output.append("[unresolved] "); //$NON-NLS-1$
 	}
@@ -1468,10 +1449,11 @@ public void updateTypeVariableBinding(TypeVariableBinding previousBinding, TypeV
  * Definition reproduced here. <br/><br/>
  *
  * A method is signature polymorphic if all of the following are true:
+ * <ul>
  *  <li> It is declared in the java.lang.invoke.MethodHandle class or the java.lang.invoke.VarHandle class. </li>
  *  <li> It has a single variable arity parameter (§8.4.1) whose declared type is Object[]. </li>
  *  <li> It is native. </li>
- * <br/>
+ * </ul>
  * @return true if the method has Polymorphic Signature
  */
 public boolean hasPolymorphicSignature(Scope scope) {
@@ -1494,4 +1476,58 @@ public boolean hasPolymorphicSignature(Scope scope) {
 
 	return false;
 }
+public boolean isClosingMethod() {
+	boolean isCloseMethod = CharOperation.equals(this.selector, TypeConstants.CLOSE) && this.parameters == NO_PARAMETERS;  // close()
+	isCloseMethod |= (this.extendedTagBits & ExtendedTagBits.IsClosingMethod) != 0; // "@Owning MyType this"
+	if (isCloseMethod)
+		return this.declaringClass.hasTypeBit(TypeIds.BitAutoCloseable);
+	return false;
 }
+public boolean ownsParameter(int i) {
+	if (this.parameterFlowBits != null)
+		return (this.parameterFlowBits[i] & PARAM_OWNING) != 0;
+	if (i == 0 && this.parameters.length > 0 && this.declaringClass.hasTypeBit(TypeIds.BitWrapperCloseable)) {
+		return this.parameters[0].hasTypeBit(TypeIds.BitAutoCloseable);
+	}
+	return false;
+}
+public boolean notownsParameter(int i) {
+	if (this.parameterFlowBits != null)
+		return (this.parameterFlowBits[i] & PARAM_NOTOWNING) != 0;
+	return false;
+}
+/** @return TRUE means @NonNull declared, FALSE means @Nullable declared, null means nothing declared */
+public Boolean getParameterNullness(int idx) {
+	if (this.parameterFlowBits != null) {
+		int nullity = this.parameterFlowBits[idx] & PARAM_NULLITY;
+		if (nullity == PARAM_NONNULL)
+			return Boolean.TRUE;
+		else if (nullity == PARAM_NULLABLE)
+			return Boolean.FALSE;
+	}
+	return null;
+}
+public void verifyOverrideCompatibility(MethodBinding inheritedMethod, ClassScope scope) {
+	int len = Math.min(this.parameters.length, inheritedMethod.parameters.length);
+	AbstractMethodDeclaration sourceMethod = sourceMethod();
+	for (int i=0; i<len; i++) {
+		if (inheritedMethod.ownsParameter(i)) {
+			if (!ownsParameter(i))
+				scope.problemReporter().overrideReducingParamterOwning(sourceMethod.arguments[i]);
+		}
+	}
+	if ((this.tagBits & TagBits.AnnotationOwning) != 0) {
+		if ((inheritedMethod.tagBits & TagBits.AnnotationOwning) == 0)
+			scope.problemReporter().overrideAddingReturnOwning(sourceMethod);
+	}
+}
+public boolean isWellknownMethod(char[][] compoundClassName, char[] wellKnownSelector) {
+	return CharOperation.equals(this.declaringClass.compoundName, compoundClassName)
+			&& CharOperation.equals(this.selector, wellKnownSelector);
+}
+public boolean isWellknownMethod(int typeId, char[] wellKnownSelector) {
+	return this.declaringClass.id == typeId
+			&& CharOperation.equals(this.selector, wellKnownSelector);
+}
+}
+

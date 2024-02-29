@@ -896,7 +896,7 @@ public void manageEnclosingInstanceAccessIfNecessary(BlockScope currentScope, Fl
 }
 
 /**
- * index is <0 to denote write access emulation
+ * index is less then 0 to denote write access emulation
  */
 public void manageSyntheticAccessIfNecessary(BlockScope currentScope, FieldBinding fieldBinding, int index, FlowInfo flowInfo) {
 	if ((flowInfo.tagBits & FlowInfo.UNREACHABLE_OR_DEAD) != 0) return;
@@ -993,7 +993,7 @@ public TypeBinding postConversionType(Scope scope) {
 }
 
 @Override
-public StringBuffer printExpression(int indent, StringBuffer output) {
+public StringBuilder printExpression(int indent, StringBuilder output) {
 	for (int i = 0; i < this.tokens.length; i++) {
 		if (i > 0) output.append('.');
 		output.append(this.tokens[i]);

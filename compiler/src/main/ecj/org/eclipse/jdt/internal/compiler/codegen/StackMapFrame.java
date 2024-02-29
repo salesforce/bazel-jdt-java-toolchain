@@ -71,20 +71,6 @@ public class StackMapFrame {
 		return FULL_FRAME;
 	}
 
-	public void addLocal(int resolvedPosition, VerificationTypeInfo info) {
-		if (this.locals == null) {
-			this.locals = new VerificationTypeInfo[resolvedPosition + 1];
-			this.locals[resolvedPosition] = info;
-		} else {
-			final int length = this.locals.length;
-			if (resolvedPosition >= length) {
-				System.arraycopy(this.locals, 0, this.locals = new VerificationTypeInfo[resolvedPosition + 1], 0,
-						length);
-			}
-			this.locals[resolvedPosition] = info;
-		}
-	}
-
 	public void addStackItem(VerificationTypeInfo info) {
 		if (info == null) {
 			throw new IllegalArgumentException("info cannot be null"); //$NON-NLS-1$
@@ -103,7 +89,7 @@ public class StackMapFrame {
 	}
 
 	public StackMapFrame duplicate() {
-		Map<VerificationTypeInfo, VerificationTypeInfo> cache = new HashMap<VerificationTypeInfo, VerificationTypeInfo>();
+		Map<VerificationTypeInfo, VerificationTypeInfo> cache = new HashMap<>();
 		int length = this.locals.length;
 		StackMapFrame result = new StackMapFrame(length);
 		result.numberOfLocals = -1;
@@ -323,12 +309,12 @@ public class StackMapFrame {
 
 	@Override
 	public String toString() {
-		StringBuffer buffer = new StringBuffer();
+		StringBuilder buffer = new StringBuilder();
 		printFrame(buffer, this);
 		return String.valueOf(buffer);
 	}
 
-	private void printFrame(StringBuffer buffer, StackMapFrame frame) {
+	private void printFrame(StringBuilder buffer, StackMapFrame frame) {
 		String pattern = "[pc : {0} locals: {1} stack items: {2}\nlocals: {3}\nstack: {4}\n]"; //$NON-NLS-1$
 		int localsLength = frame.locals == null ? 0 : frame.locals.length;
 		buffer.append(MessageFormat.format(pattern,
@@ -338,7 +324,7 @@ public class StackMapFrame {
 	}
 
 	private String print(VerificationTypeInfo[] infos, int length) {
-		StringBuffer buffer = new StringBuffer();
+		StringBuilder buffer = new StringBuilder();
 		buffer.append('[');
 		if (infos != null) {
 			for (int i = 0; i < length; i++) {

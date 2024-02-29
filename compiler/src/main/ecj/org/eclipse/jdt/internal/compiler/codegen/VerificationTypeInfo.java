@@ -152,7 +152,7 @@ public class VerificationTypeInfo {
 
 	@Override
 	public String toString() {
-		StringBuffer buffer = new StringBuffer();
+		StringBuilder buffer = new StringBuilder();
 		switch (this.tag) {
 			case VerificationTypeInfo.ITEM_UNINITIALIZED_THIS:
 				buffer.append("uninitialized_this(").append(readableName()).append(")"); //$NON-NLS-1$//$NON-NLS-2$
@@ -227,7 +227,7 @@ public class VerificationTypeInfo {
 		}
 		if (!this.binding.equals(verificationTypeInfo.binding)) {
 			if (this.bindings == null) {
-				this.bindings = new ArrayList<TypeBinding>();
+				this.bindings = new ArrayList<>();
 				this.bindings.add(this.binding);
 			}
 			this.bindings.add(verificationTypeInfo.binding);

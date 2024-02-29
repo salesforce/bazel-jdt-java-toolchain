@@ -18,6 +18,7 @@ package org.eclipse.jdt.internal.compiler.batch;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.InvalidPathException;
+import java.nio.file.NoSuchFileException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -281,6 +282,9 @@ protected FileSystem(Classpath[] paths, String[] initialFileNames, boolean annot
 		} catch(InvalidPathException exception) {
 			// JRE 9 could throw an IAE if the linked JAR paths have invalid chars, such as ":"
 			// ignore
+		} catch (NoSuchFileException e) {
+			// we don't warn about inexisting jars (javac does the same as us)
+			// see org.eclipse.jdt.core.tests.compiler.regression.BatchCompilerTest.test017b()
 		} catch (IOException e) {
 			String error = "Failed to init " + classpath; //$NON-NLS-1$
 			if (JRTUtil.PROPAGATE_IO_ERRORS) {
@@ -473,6 +477,7 @@ private static String convertPathSeparators(String path) {
 		? path.replace('\\', '/')
 		 : path.replace('/', '\\');
 }
+@SuppressWarnings("resource") // don't close classpathEntry.zipFile, which we don't own
 private ClasspathAnswer findClass(String qualifiedTypeName, char[] typeName, boolean asBinaryOnly, /*NonNull*/char[] moduleName) {
 	ClasspathAnswer answer = internalFindClass(qualifiedTypeName, typeName, asBinaryOnly, moduleName);
 	if (this.annotationsFromClasspath && answer != null && answer.getBinaryType() instanceof ClassFileReader) {
@@ -481,7 +486,7 @@ private ClasspathAnswer findClass(String qualifiedTypeName, char[] typeName, boo
 			if (classpathEntry.hasAnnotationFileFor(qualifiedTypeName)) {
 				// in case of 'this.annotationsFromClasspath' we indeed search for .eea entries inside the main zipFile of the entry:
 				ZipFile zip = classpathEntry instanceof ClasspathJar ? ((ClasspathJar) classpathEntry).zipFile : null;
-				boolean shouldClose = false; // don't close classpathEntry.zipFile, which we don't own
+				boolean shouldClose = false;
 				try {
 					if (zip == null) {
 						zip = ExternalAnnotationDecorator.getAnnotationZipFile(classpathEntry.getPath(), null);
@@ -686,7 +691,7 @@ private char[][] filterModules(char[][] declaringModules) {
 	return filtered;
 }
 private Parser getParser() {
-	Map<String,String> opts = new HashMap<String, String>();
+	Map<String,String> opts = new HashMap<>();
 	opts.put(CompilerOptions.OPTION_Source, CompilerOptions.VERSION_9);
 	return new Parser(
 			new ProblemReporter(DefaultErrorHandlingPolicies.exitOnFirstError(), new CompilerOptions(opts), new DefaultProblemFactory(Locale.getDefault())),
@@ -698,7 +703,7 @@ public boolean hasCompilationUnit(char[][] qualifiedPackageName, char[] moduleNa
 	String moduleNameString = String.valueOf(moduleName);
 	LookupStrategy strategy = LookupStrategy.get(moduleName);
 	Parser parser = checkCUs ? getParser() : null;
-	Function<CompilationUnit, String> pkgNameExtractor = (sourceUnit) -> {
+	Function<CompilationUnit, String> pkgNameExtractor = sourceUnit -> {
 		String pkgName = null;
 		CompilationResult compilationResult = new CompilationResult(sourceUnit, 0, 0, 1);
 		char[][] name = parser.parsePackageDeclaration(sourceUnit.getContents(), compilationResult);

@@ -160,8 +160,8 @@ public class CaptureBinding extends TypeVariableBinding {
 	}
 
 	/**
-	 * Initialize capture bounds using substituted supertypes
-	 * e.g. given X<U, V extends X<U, V>>,     capture(X<E,?>) = X<E,capture>, where capture extends X<E,capture>
+	 * Initialize capture bounds using substituted supertypes e.g. given
+	 * {@code X<U, V extends X<U, V>>, capture(X<E,?>) = X<E,capture>,} where {@code capture extends X<E,capture>}
 	 */
 	public void initializeBounds(Scope scope, ParameterizedTypeBinding capturedParameterizedType) {
 		boolean is18plus = scope.compilerOptions().complianceLevel >= ClassFileConstants.JDK1_8;
@@ -440,7 +440,7 @@ public class CaptureBinding extends TypeVariableBinding {
 
 	@Override
 	public char[] nullAnnotatedReadableName(CompilerOptions options, boolean shortNames) {
-	    StringBuffer nameBuffer = new StringBuffer(10);
+	    StringBuilder nameBuffer = new StringBuilder(10);
 		appendNullAnnotation(nameBuffer, options);
 		nameBuffer.append(this.sourceName());
 		if (!this.inRecursiveFunction) { // CaptureBinding18 can be recursive indeed

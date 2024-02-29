@@ -596,8 +596,7 @@ public void generateCode(BlockScope currentScope, CodeStream codeStream, boolean
 }
 
 /**
- * Boolean operator code generation
- *	Optimized operations are: <, <=, >, >=, &, |, ^
+ * Boolean operator code generation. Optimized operations are: {@code <, <=, >, >=, &, |, ^}
  */
 @Override
 public void generateOptimizedBoolean(BlockScope currentScope, CodeStream codeStream, BranchLabel trueLabel, BranchLabel falseLabel, boolean valueRequired) {
@@ -893,7 +892,7 @@ public void generateOptimizedGreaterThanOrEqual(BlockScope currentScope, CodeStr
 }
 
 /**
- * Boolean generation for <
+ * Boolean generation for {@code <}
  */
 public void generateOptimizedLessThan(BlockScope currentScope, CodeStream codeStream, BranchLabel trueLabel, BranchLabel falseLabel, boolean valueRequired) {
 	int promotedTypeID = (this.left.implicitConversion & TypeIds.IMPLICIT_CONVERSION_MASK) >> 4;
@@ -997,7 +996,7 @@ public void generateOptimizedLessThan(BlockScope currentScope, CodeStream codeSt
 }
 
 /**
- * Boolean generation for <=
+ * Boolean generation for {@code <=}
  */
 public void generateOptimizedLessThanOrEqual(BlockScope currentScope, CodeStream codeStream, BranchLabel trueLabel, BranchLabel falseLabel, boolean valueRequired) {
 	int promotedTypeID = (this.left.implicitConversion & TypeIds.IMPLICIT_CONVERSION_MASK) >> 4;
@@ -1105,7 +1104,7 @@ public void generateOptimizedLessThanOrEqual(BlockScope currentScope, CodeStream
 }
 
 /**
- * Boolean generation for &
+ * Boolean generation for {@code &}
  */
 public void generateLogicalAnd(BlockScope currentScope, CodeStream codeStream, boolean valueRequired) {
 	Constant condConst;
@@ -1255,7 +1254,7 @@ public void generateLogicalXor(BlockScope currentScope,	CodeStream codeStream, b
 }
 
 /**
- * Boolean generation for &
+ * Boolean generation for {@code &}
  */
 public void generateOptimizedLogicalAnd(BlockScope currentScope, CodeStream codeStream, BranchLabel trueLabel, BranchLabel falseLabel, boolean valueRequired) {
 	Constant condConst;
@@ -1819,7 +1818,7 @@ public void optimizedBooleanConstant(int leftId, int operator, int rightId) {
 }
 
 @Override
-public StringBuffer printExpressionNoParenthesis(int indent, StringBuffer output) {
+public StringBuilder printExpressionNoParenthesis(int indent, StringBuilder output) {
 	// keep implementation in sync with
 	// CombinedBinaryExpression#printExpressionNoParenthesis
 	this.left.printExpression(indent, output).append(' ').append(operatorToString()).append(' ');
@@ -1827,16 +1826,8 @@ public StringBuffer printExpressionNoParenthesis(int indent, StringBuffer output
 }
 
 @Override
-public void collectPatternVariablesToScope(LocalVariableBinding[] variables, BlockScope scope) {
-	this.addPatternVariablesWhenTrue(variables);
-	this.left.addPatternVariablesWhenTrue(variables);
-	this.left.collectPatternVariablesToScope(variables, scope);
-	this.right.addPatternVariablesWhenTrue(variables);
-	this.right.collectPatternVariablesToScope(variables, scope);
-}
-@Override
 public void addPatternVariables(BlockScope scope, CodeStream codeStream) {
-	this.left.addPatternVariables(scope, codeStream);
+	this.left.addPatternVariables(scope, codeStream); // Srikanth
 	this.right.addPatternVariables(scope, codeStream);
 }
 @Override
@@ -1847,19 +1838,50 @@ public boolean containsPatternVariable() {
 public TypeBinding resolveType(BlockScope scope) {
 	// keep implementation in sync with CombinedBinaryExpression#resolveType
 	// and nonRecursiveResolveTypeUpwards
-	if(this.patternVarsWhenFalse == null && this.patternVarsWhenTrue == null &&
-			this.containsPatternVariable()) {
-		// the null check is to guard against a second round of collection.
-		// This usually doesn't happen,
-		// except when we call collectPatternVariablesToScope() from here
-		this.collectPatternVariablesToScope(null, scope);
-	}
 	boolean leftIsCast, rightIsCast;
 	if ((leftIsCast = this.left instanceof CastExpression) == true) this.left.bits |= ASTNode.DisableUnnecessaryCastCheck; // will check later on
 	TypeBinding leftType = this.left.resolveType(scope);
 
 	if ((rightIsCast = this.right instanceof CastExpression) == true) this.right.bits |= ASTNode.DisableUnnecessaryCastCheck; // will check later on
-	TypeBinding rightType = this.right.resolveType(scope);
+
+	LocalVariableBinding [] patternVars = switch ((this.bits & ASTNode.OperatorMASK) >> ASTNode.OperatorSHIFT) {
+		case AND_AND -> this.left.bindingsWhenTrue();
+		case OR_OR   -> this.left.bindingsWhenFalse();
+		default      -> NO_VARIABLES;
+	};
+
+	TypeBinding rightType = this.right.resolveTypeWithBindings(patternVars, scope);
+
+	/*
+	 * 6.3.1 Scope for Pattern Variables in Expressions
+	 * 6.3.1.1 Conditional-And Operator &&
+	 *
+	 * It is a compile-time error if any of the following conditions hold:
+		• A pattern variable is both (i) introduced by a when true and (ii) introduced by
+		b when true.
+		• A pattern variable is both (i) introduced by a when false and (ii) introduced by
+		b when false.
+
+	    ...
+
+	 * 6.3.1.2 Conditional-Or Operator ||
+	 *
+	 * It is a compile-time error if any of the following conditions hold:
+		• A pattern variable is both (i) introduced by a when true and (ii) introduced by
+		b when true.
+		• A pattern variable is both (i) introduced by a when false and (ii) introduced by
+		b when false.
+	 */
+
+	// We handle only the cases NOT already diagnosed in due course to avoid double jeopardy
+	switch ((this.bits & ASTNode.OperatorMASK) >> ASTNode.OperatorSHIFT) {
+		case AND_AND -> {
+			scope.reportClashingDeclarations(this.left.bindingsWhenFalse(), this.right.bindingsWhenFalse());
+		}
+		case OR_OR -> {
+			scope.reportClashingDeclarations(this.left.bindingsWhenTrue(), this.right.bindingsWhenTrue());
+		}
+	}
 
 	// use the id of the type to navigate into the table
 	if (leftType == null || rightType == null) {

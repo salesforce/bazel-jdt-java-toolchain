@@ -63,6 +63,7 @@ import org.eclipse.jdt.internal.compiler.lookup.AnnotationBinding;
 import org.eclipse.jdt.internal.compiler.lookup.ArrayBinding;
 import org.eclipse.jdt.internal.compiler.lookup.Binding;
 import org.eclipse.jdt.internal.compiler.lookup.BlockScope;
+import org.eclipse.jdt.internal.compiler.lookup.ClassScope;
 import org.eclipse.jdt.internal.compiler.lookup.ExtraCompilerModifiers;
 import org.eclipse.jdt.internal.compiler.lookup.FieldBinding;
 import org.eclipse.jdt.internal.compiler.lookup.InferenceContext18;
@@ -348,6 +349,7 @@ public abstract class ASTNode implements TypeConstants, TypeIds {
 	public static final Argument [] NO_ARGUMENTS = new Argument [0];
 	public static final RecordComponent [] NO_RECORD_COMPONENTS = new RecordComponent [0];
 	public static final TypePattern[] NO_TYPE_PATTERNS = new TypePattern[0];
+	public static final LocalVariableBinding[] NO_VARIABLES = new LocalVariableBinding[0];
 
 	public ASTNode() {
 
@@ -663,9 +665,9 @@ public abstract class ASTNode implements TypeConstants, TypeIds {
 		return false;
 	}
 
-	public abstract StringBuffer print(int indent, StringBuffer output);
+	public abstract StringBuilder print(int indent, StringBuilder output);
 
-	public static StringBuffer printAnnotations(Annotation[] annotations, StringBuffer output) {
+	public static StringBuilder printAnnotations(Annotation[] annotations, StringBuilder output) {
 		int length = annotations.length;
 		for (int i = 0; i < length; i++) {
 			if (i > 0) {
@@ -681,13 +683,13 @@ public abstract class ASTNode implements TypeConstants, TypeIds {
 		return output;
 	}
 
-	public static StringBuffer printIndent(int indent, StringBuffer output) {
+	public static StringBuilder printIndent(int indent, StringBuilder output) {
 
 		for (int i = indent; i > 0; i--) output.append("  "); //$NON-NLS-1$
 		return output;
 	}
 
-	public static StringBuffer printModifiers(int modifiers, StringBuffer output) {
+	public static StringBuilder printModifiers(int modifiers, StringBuilder output) {
 
 		if ((modifiers & ClassFileConstants.AccPublic) != 0)
 			output.append("public "); //$NON-NLS-1$
@@ -718,6 +720,15 @@ public abstract class ASTNode implements TypeConstants, TypeIds {
 		return output;
 	}
 
+	public static void resolveStatements(Statement[] statements, BlockScope scope) {
+		LocalVariableBinding [] livePatternVariables = NO_VARIABLES;
+		for (int i = 0, length = statements.length; i < length; i++) {
+			final Statement stmt = statements[i];
+			stmt.resolveWithBindings(livePatternVariables, scope);
+			livePatternVariables = LocalVariableBinding.merge(livePatternVariables, stmt.bindingsWhenComplete());
+		}
+	}
+
 	/**
 	 * After method lookup has produced 'methodBinding' but when poly expressions have been seen as arguments,
 	 * inspect the arguments to trigger another round of resolving with improved target types from the methods parameters.
@@ -730,6 +741,16 @@ public abstract class ASTNode implements TypeConstants, TypeIds {
 	 * @return either the original method or a problem method
 	 */
 	public static MethodBinding resolvePolyExpressionArguments(Invocation invocation, MethodBinding method, TypeBinding[] argumentTypes, BlockScope scope) {
+		ClassScope cScope = scope.enclosingClassScope();
+		boolean resolvingPolyExpressionArguments = cScope.resolvingPolyExpressionArguments;
+		try {
+			cScope.resolvingPolyExpressionArguments = true;
+			return resolvePolyExpressionArguments0(invocation, method, argumentTypes, scope);
+		} finally {
+			cScope.resolvingPolyExpressionArguments = resolvingPolyExpressionArguments;
+		}
+	}
+	private static MethodBinding resolvePolyExpressionArguments0(Invocation invocation, MethodBinding method, TypeBinding[] argumentTypes, BlockScope scope) {
 		MethodBinding candidateMethod = method.isValidBinding() ? method : method instanceof ProblemMethodBinding ? ((ProblemMethodBinding) method).closestMatch : null;
 		if (candidateMethod == null)
 			return method;
@@ -1496,7 +1517,7 @@ public static void resolveDeprecatedAnnotations(BlockScope scope, Annotation[] a
 	@Override
 	public String toString() {
 
-		return print(0, new StringBuffer(30)).toString();
+		return print(0, new StringBuilder(30)).toString();
 	}
 
 	public void traverse(ASTVisitor visitor, BlockScope scope) {

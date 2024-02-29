@@ -146,8 +146,8 @@ public class ModuleDeclaration extends ASTNode implements ReferenceContext {
 
 		this.hasResolvedModuleDirectives = true;
 
-		Set<ModuleBinding> requiredModules = new HashSet<ModuleBinding>();
-		Set<ModuleBinding> requiredTransitiveModules = new HashSet<ModuleBinding>();
+		Set<ModuleBinding> requiredModules = new HashSet<>();
+		Set<ModuleBinding> requiredTransitiveModules = new HashSet<>();
 		for(int i = 0; i < this.requiresCount; i++) {
 			RequiresStatement ref = this.requires[i];
 			if (ref != null && ref.resolve(cuScope) != null) {
@@ -248,7 +248,7 @@ public class ModuleDeclaration extends ASTNode implements ReferenceContext {
 		this.hasResolvedTypeDirectives = true;
 		ASTNode.resolveAnnotations(this.scope, this.annotations, this.binding);
 
-		Set<TypeBinding> allTypes = new HashSet<TypeBinding>();
+		Set<TypeBinding> allTypes = new HashSet<>();
 		for(int i = 0; i < this.usesCount; i++) {
 			TypeBinding serviceBinding = this.uses[i].serviceInterface.resolveType(this.scope);
 			if (serviceBinding != null && serviceBinding.isValidBinding()) {
@@ -360,7 +360,7 @@ public class ModuleDeclaration extends ASTNode implements ReferenceContext {
 		visitor.visit(this, unitScope);
 	}
 
-	public StringBuffer printHeader(int indent, StringBuffer output) {
+	public StringBuilder printHeader(int indent, StringBuilder output) {
 		if (this.annotations != null) {
 			for (int i = 0; i < this.annotations.length; i++) {
 				this.annotations[i].print(indent, output);
@@ -376,7 +376,7 @@ public class ModuleDeclaration extends ASTNode implements ReferenceContext {
 		output.append(CharOperation.charToString(this.moduleName));
 		return output;
 	}
-	public StringBuffer printBody(int indent, StringBuffer output) {
+	public StringBuilder printBody(int indent, StringBuilder output) {
 		output.append(" {"); //$NON-NLS-1$
 		if (this.requires != null) {
 			for(int i = 0; i < this.requiresCount; i++) {
@@ -414,7 +414,7 @@ public class ModuleDeclaration extends ASTNode implements ReferenceContext {
 	}
 
 	@Override
-	public StringBuffer print(int indent, StringBuffer output) {
+	public StringBuilder print(int indent, StringBuilder output) {
 		//
 		printIndent(indent, output);
 		printHeader(0, output);

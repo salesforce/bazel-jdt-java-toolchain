@@ -102,7 +102,7 @@ public class Clinit extends AbstractMethodDeclaration {
 	}
 
 	/**
-	 * Bytecode generation for a <clinit> method
+	 * Bytecode generation for a {@code <clinit>} method
 	 *
 	 * @param classScope org.eclipse.jdt.internal.compiler.lookup.ClassScope
 	 * @param classFile org.eclipse.jdt.internal.compiler.codegen.ClassFile
@@ -191,6 +191,7 @@ public class Clinit extends AbstractMethodDeclaration {
 
 		codeStream.reset(this, classFile);
 		TypeDeclaration declaringType = classScope.referenceContext;
+		codeStream.pushPatternAccessTrapScope(this.scope);
 
 		// initialize local positions - including initializer scope.
 		MethodScope staticInitializerScope = declaringType.staticInitializerScope;
@@ -353,6 +354,8 @@ public class Clinit extends AbstractMethodDeclaration {
 					codeStream.recordPositionsFrom(before, sourcePosition);
 				}
 			}
+			// See https://github.com/eclipse-jdt/eclipse.jdt.core/issues/1796#issuecomment-1933458054
+			codeStream.handleRecordAccessorExceptions(this.scope);
 			// Record the end of the clinit: point to the declaration of the class
 			codeStream.recordPositionsFrom(0, declaringType.sourceStart);
 			classFile.completeCodeAttributeForClinit(codeAttributeOffset, classScope);
@@ -383,7 +386,7 @@ public class Clinit extends AbstractMethodDeclaration {
 	}
 
 	@Override
-	public StringBuffer print(int tab, StringBuffer output) {
+	public StringBuilder print(int tab, StringBuilder output) {
 
 		printIndent(tab, output).append("<clinit>()"); //$NON-NLS-1$
 		printBody(tab + 1, output);

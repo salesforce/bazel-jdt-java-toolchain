@@ -253,11 +253,13 @@ public class ParameterizedTypeBinding extends ReferenceBinding implements Substi
 
 	/**
 	 * Collect the substitutes into a map for certain type variables inside the receiver type
-	 * e.g.   Collection<T>.collectSubstitutes(Collection<List<X>>, Map), will populate Map with: T --> List<X>
+	 * e.g. {@code Collection<T>.collectSubstitutes(Collection<List<X>>, Map)} will populate Map with: {@code T --> List<X>}
 	 * Constraints:
+	 * <pre>{@code
 	 *   A << F   corresponds to:   F.collectSubstitutes(..., A, ..., CONSTRAINT_EXTENDS (1))
-	 *   A = F   corresponds to:      F.collectSubstitutes(..., A, ..., CONSTRAINT_EQUAL (0))
+	 *   A = F    corresponds to:   F.collectSubstitutes(..., A, ..., CONSTRAINT_EQUAL (0))
 	 *   A >> F   corresponds to:   F.collectSubstitutes(..., A, ..., CONSTRAINT_SUPER (2))
+	 * }</pre>
 	 */
 	@Override
 	public void collectSubstitutes(Scope scope, TypeBinding actualType, InferenceContext inferenceContext, int constraint) {
@@ -645,9 +647,10 @@ public class ParameterizedTypeBinding extends ReferenceBinding implements Substi
 		return this.type;
 	}
 
-	/**
+	/**<pre>{@code
 	 * Ltype<param1 ... paramN>;
 	 * LY<TT;>;
+	 * }</pre>
 	 */
 	@Override
 	public char[] genericTypeSignature() {
@@ -1384,7 +1387,7 @@ public class ParameterizedTypeBinding extends ReferenceBinding implements Substi
 
 	@Override
 	char[] nullAnnotatedReadableName(CompilerOptions options) {
-	    StringBuffer nameBuffer = new StringBuffer(10);
+	    StringBuilder nameBuffer = new StringBuilder(10);
 		if (isMemberType()) {
 			nameBuffer.append(enclosingType().nullAnnotatedReadableName(options, false));
 			nameBuffer.append('.');
@@ -1423,7 +1426,7 @@ public class ParameterizedTypeBinding extends ReferenceBinding implements Substi
 
 	@Override
 	char[] nullAnnotatedShortReadableName(CompilerOptions options) {
-	    StringBuffer nameBuffer = new StringBuffer(10);
+	    StringBuilder nameBuffer = new StringBuilder(10);
 		if (isMemberType()) {
 			nameBuffer.append(enclosingType().nullAnnotatedReadableName(options, true));
 			nameBuffer.append('.');
@@ -1533,7 +1536,7 @@ public class ParameterizedTypeBinding extends ReferenceBinding implements Substi
 	    		for (int i = this.superInterfaces.length; --i >= 0;) {
 	    			this.typeBits |= (this.superInterfaces[i].typeBits & TypeIds.InheritableBits);
 	    			if ((this.typeBits & (TypeIds.BitAutoCloseable|TypeIds.BitCloseable)) != 0) // avoid the side-effects of hasTypeBit()!
-	    				this.typeBits |= applyCloseableInterfaceWhitelists();
+	    				this.typeBits |= applyCloseableInterfaceWhitelists(this.environment.globalOptions);
 	    		}
     		}
 	    }
@@ -1837,6 +1840,8 @@ public class ParameterizedTypeBinding extends ReferenceBinding implements Substi
 							types[i] = typeParameters[i].superclass; // assumably j.l.Object?
 						break;
 				}
+				if (types[i] != null)
+					types[i] = wildcard.propagateNonConflictingNullAnnotations(types[i]);
 			} else {
 				// If Ai is a type, then Ti = Ai.
 				types[i] = typeArgument;

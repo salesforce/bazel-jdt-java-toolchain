@@ -23,6 +23,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.Arrays;
 import java.util.function.Predicate;
 
@@ -156,19 +157,38 @@ public static ClassFileReader readFromModule(
 		throws ClassFormatException, java.io.IOException {
 		return JRTUtil.getClassfile(jrt, filename, moduleName, moduleNameFilter);
 }
-public static ClassFileReader read(
-	java.util.zip.ZipFile zip,
-	String filename,
-	boolean fullyInitialize)
-	throws ClassFormatException, java.io.IOException {
+
+public static ClassFileReader read(java.util.zip.ZipFile zip, String filename, boolean fullyInitialize)
+		throws ClassFormatException, java.io.IOException {
 	java.util.zip.ZipEntry ze = zip.getEntry(filename);
-	if (ze == null)
+	if (ze == null) {
 		return null;
-	ClassFileReader classFileReader = Util.getZipEntryClassFile(zip.getName(), filename);
-	if (fullyInitialize) {
-		classFileReader.initialize();
 	}
-	return classFileReader;
+	try (InputStream stream = zip.getInputStream(ze)) {
+		URI uri =  URI.create("jar:file://" + toUri(zip.getName()).getRawPath() + "!/" + filename); //$NON-NLS-1$ //$NON-NLS-2$
+		ClassFileReader classFileReader = new ClassFileReader(uri, Util.getInputStreamAsByteArray(stream),
+				filename.toCharArray());
+		if (fullyInitialize) {
+			classFileReader.initialize();
+		}
+		return classFileReader;
+	}
+}
+
+/**
+ * same as <code>new java.io.File(absoluteNormalFilePath).toURI()</code> if absoluteNormalFilePath is not a directory
+ * but faster because it avoid IO for the isDirectory check.
+ **/
+private static URI toUri(final String absoluteNormalFilePath) {
+	String p = absoluteNormalFilePath.replace(File.separatorChar, '/');
+	if (!p.startsWith("/")) { //$NON-NLS-1$
+		p = "/" + p; //$NON-NLS-1$
+	}
+	try {
+		return new URI("file", null, p, null); //$NON-NLS-1$
+	} catch (URISyntaxException x) {
+		throw new RuntimeException(x);
+	}
 }
 
 public static ClassFileReader read(String fileName) throws ClassFormatException, java.io.IOException {
@@ -180,11 +200,12 @@ public static ClassFileReader read(String fileName, boolean fullyInitialize) thr
 }
 
 /**
+ * hint: Use {@link #ClassFileReader(URI, byte[], char[])} where an annotation processor might be in the picture
+ *
  * @param classFileBytes Actual bytes of a .class file
  * @param fileName	Actual name of the file that contains the bytes, can be null
  *
  * @exception ClassFormatException
- * @Deprecated Use {@link #ClassFileReader(URI, byte[], char[])} where an annotation processor might be in the picture
  */
 public ClassFileReader(byte classFileBytes[], char[] fileName) throws ClassFormatException {
 	this(classFileBytes, fileName, false);
@@ -204,6 +225,8 @@ public ClassFileReader(URI path, byte classFileBytes[], char[] fileName) throws 
 }
 
 /**
+ * hint: Use {@link #ClassFileReader(URI, byte[], char[])} where an annotation processor might be in the picture
+ *
  * @param classFileBytes byte[]
  * 		Actual bytes of a .class file
  *
@@ -213,7 +236,6 @@ public ClassFileReader(URI path, byte classFileBytes[], char[] fileName) throws 
  * @param fullyInitialize boolean
  * 		Flag to fully initialize the new object
  * @exception ClassFormatException
- * @Deprecated Use {@link #ClassFileReader(URI, byte[], char[])} where an annotation processor might be in the picture
  */
 public ClassFileReader(byte[] classFileBytes, char[] fileName, boolean fullyInitialize) throws ClassFormatException {
 	// This method looks ugly but is actually quite simple, the constantPool is constructed
@@ -555,7 +577,7 @@ public ExternalAnnotationStatus getExternalAnnotationStatus() {
 /**
  * Conditionally add external annotations to the mix.
  * If 'member' is given it must be either of IBinaryField or IBinaryMethod, in which case we're seeking annotations for that member.
- * Otherwise we're seeking annotations for top-level elements of a type (type parameters & super types).
+ * Otherwise we're seeking annotations for top-level elements of a type (type parameters and super types).
  */
 @Override
 public ITypeAnnotationWalker enrichWithExternalAnnotationsFor(ITypeAnnotationWalker walker, Object member, LookupEnvironment environment) {
@@ -677,7 +699,7 @@ public char[] getEnclosingMethod() {
 	}
 	if (this.enclosingMethod == null) {
 		// read the name
-		StringBuffer buffer = new StringBuffer();
+		StringBuilder buffer = new StringBuilder();
 
 		int nameAndTypeOffset = this.constantPoolOffsets[this.enclosingNameAndTypeIndex];
 		int utf8Offset = this.constantPoolOffsets[u2At(nameAndTypeOffset + 1)];
@@ -946,7 +968,7 @@ public long getTagBits() {
 
 /**
  * Answer the major/minor version defined in this class file according to the VM spec.
- * as a long: (major<<16)+minor
+ * as a long:  {@code (major<<16)+minor}
  * @return the major/minor version found
  */
 public long getVersion() {

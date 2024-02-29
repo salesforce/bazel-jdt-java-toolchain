@@ -1,6 +1,6 @@
 # Eclipse Java Compiler
 
-We are using a patched version of ECJ 4.30 to incorporate fixes for:
+We are using a patched version of ECJ 4.31 RC1 to incorporate fixes for:
 
 * None at this time
 

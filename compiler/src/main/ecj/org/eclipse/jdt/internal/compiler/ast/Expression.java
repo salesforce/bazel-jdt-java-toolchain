@@ -788,36 +788,6 @@ public void addPatternVariables(BlockScope scope, CodeStream codeStream) {
 public LocalDeclaration getPatternVariable() {
 	return null;
 }
-public void collectPatternVariablesToScope(LocalVariableBinding[] variables, BlockScope scope) {
-	new ASTVisitor() {
-		LocalVariableBinding[] patternVariablesInScope;
-		@Override
-		public boolean visit(Argument argument, BlockScope skope) {
-			// Most likely to be a lambda parameter
-			argument.addPatternVariablesWhenTrue(this.patternVariablesInScope);
-			return true;
-		}
-		@Override
-		public boolean visit(
-				QualifiedNameReference nameReference,
-				BlockScope skope) {
-			nameReference.addPatternVariablesWhenTrue(this.patternVariablesInScope);
-			return true;
-		}
-		@Override
-		public boolean visit(
-				SingleNameReference nameReference,
-				BlockScope skope) {
-			nameReference.addPatternVariablesWhenTrue(this.patternVariablesInScope);
-			return true;
-		}
-
-		public void propagatePatternVariablesInScope(LocalVariableBinding[] vars, BlockScope skope) {
-			this.patternVariablesInScope = vars;
-			Expression.this.traverse(this, skope);
-		}
-	}.propagatePatternVariablesInScope(variables, scope);
-}
 
 /**
  * Default generation of a boolean value
@@ -1139,15 +1109,15 @@ public TypeBinding postConversionType(Scope scope) {
 }
 
 @Override
-public StringBuffer print(int indent, StringBuffer output) {
+public StringBuilder print(int indent, StringBuilder output) {
 	printIndent(indent, output);
 	return printExpression(indent, output);
 }
 
-public abstract StringBuffer printExpression(int indent, StringBuffer output);
+public abstract StringBuilder printExpression(int indent, StringBuilder output);
 
 @Override
-public StringBuffer printStatement(int indent, StringBuffer output) {
+public StringBuilder printStatement(int indent, StringBuilder output) {
 	return print(indent, output).append(";"); //$NON-NLS-1$
 }
 
@@ -1160,6 +1130,24 @@ public void resolve(BlockScope scope) {
 @Override
 public TypeBinding resolveExpressionType(BlockScope scope) {
 	return resolveType(scope);
+}
+
+public TypeBinding resolveTypeWithBindings(LocalVariableBinding[] bindings, BlockScope scope) {
+	scope.include(bindings);
+	try {
+		return this.resolveType(scope);
+	} finally {
+		scope.exclude(bindings);
+	}
+}
+
+public TypeBinding resolveTypeExpectingWithBindings(LocalVariableBinding[] bindings, BlockScope scope, TypeBinding expectedType) {
+	scope.include(bindings);
+	try {
+		return this.resolveTypeExpecting(scope, expectedType);
+	} finally {
+		scope.exclude(bindings);
+	}
 }
 
 /**
@@ -1279,7 +1267,7 @@ public boolean forcedToBeRaw(ReferenceContext referenceContext) {
 /**
  * Returns an object which can be used to identify identical JSR sequence targets
  * (see TryStatement subroutine codegen)
- * or <code>null</null> if not reusable
+ * or <code>null</code> if not reusable
  */
 public Object reusableJSRTarget() {
 	if (this.constant != Constant.NotAConstant && (this.implicitConversion & TypeIds.BOXING) == 0) {

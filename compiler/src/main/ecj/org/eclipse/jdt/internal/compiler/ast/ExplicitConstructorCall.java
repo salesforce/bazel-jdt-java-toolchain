@@ -107,8 +107,7 @@ public class ExplicitConstructorCall extends Statement implements Invocation {
 							.analyseCode(currentScope, flowContext, flowInfo)
 							.unconditionalInits();
 					if (analyseResources) {
-						// if argument is an AutoCloseable insert info that it *may* be closed (by the target constructor, i.e.)
-						flowInfo = FakedTrackingVariable.markPassedToOutside(currentScope, this.arguments[i], flowInfo, flowContext, false);
+						flowInfo = handleResourcePassedToInvocation(currentScope, this.binding, this.arguments[i], i, flowContext, flowInfo);
 					}
 					this.arguments[i].checkNPEbyUnboxing(currentScope, flowContext, flowInfo);
 				}
@@ -270,7 +269,7 @@ public class ExplicitConstructorCall extends Statement implements Invocation {
 	}
 
 	@Override
-	public StringBuffer printStatement(int indent, StringBuffer output) {
+	public StringBuilder printStatement(int indent, StringBuilder output) {
 		printIndent(indent, output);
 		if (this.qualification != null) this.qualification.printExpression(0, output).append('.');
 		if (this.typeArguments != null) {

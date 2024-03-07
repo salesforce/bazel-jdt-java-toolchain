@@ -1,0 +1,8 @@
+-d
+bin
+-s
+src-gen
+-verbose
+--release
+11
+src/BigEnum.java

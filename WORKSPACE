@@ -131,47 +131,47 @@ jvm_maven_import_external(
     server_urls = _DEFAULT_REPOSITORIES,
 )
 
-# here we need to use the same jacoco version/jars that bazel adds to the runtime classpath
+# here we need to use the same jacoco/asm version/jars that bazel adds to the runtime classpath
 # if the jars are out of sync this error will be reported: NoClassDefFoundError: org/jacoco/agent/rt/internal_{commit-hash}/Offline
-# get the latest bazel jacoco jars from https://github.com/bazelbuild/bazel/tree/master/third_party/java/jacoco
+# get the matching bazel jacoco jars from https://github.com/bazelbuild/bazel/tree/master/third_party/java/jacoco
 http_file(
     name = "bazel_org_jacoco_core_jar",
-    downloaded_file_path = "org.jacoco.core-0.8.9-SNAPSHOT.jar",
+    downloaded_file_path = "org.jacoco.core.jar",
     urls = [
-        "https://github.com/bazelbuild/bazel/raw/ad8ea5aed2c97c4dbbe577fb69adbd51746f6a51/third_party/java/jacoco/org.jacoco.core-0.8.9-SNAPSHOT.jar"
+        "https://github.com/bazelbuild/bazel/raw/ad8ea5aed2c97c4dbbe577fb69adbd51746f6a51/third_party/java/jacoco/org.jacoco.core-0.8.11.jar"
     ],
-    sha256 = "434d2b652afbf48904172d3f078ed126220997f247d66d5ed93a8f5f107783b3",
+    sha256 = "fcd188c688473fc8dcc0c6caaf355e7b389502243527c33b9597a3ec28791f47",
 )
 
 http_file(
     name = "bazel_org_jacoco_core_srcjar",
-    downloaded_file_path = "org.jacoco.core-0.8.9-SNAPSHOT-sources.jar",
+    downloaded_file_path = "org.jacoco.core-sources.jar",
     urls = [
-        "https://github.com/bazelbuild/bazel/raw/ad8ea5aed2c97c4dbbe577fb69adbd51746f6a51/third_party/java/jacoco/org.jacoco.core-0.8.9-SNAPSHOT-sources.jar"
+        "https://github.com/bazelbuild/bazel/raw/ad8ea5aed2c97c4dbbe577fb69adbd51746f6a51/third_party/java/jacoco/org.jacoco.core-0.8.11-sources.jar"
     ],
-    sha256 = "0d40cf9f67cc790727554d5474f8e2a9262aa2c99c6bada2defa97644eacf01d",
+    sha256 = "6856d98a837c669f33284df0104130000b12eaf38f04374c6d753eb03c65d93a",
 )
 
 jvm_maven_import_external(
     name = "rules_jdt_org_ow2_asm_asm",
-    artifact = "org.ow2.asm:asm:jar:9.5",
-    artifact_sha256 = "b62e84b5980729751b0458c534cf1366f727542bb8d158621335682a460f0353",
+    artifact = "org.ow2.asm:asm:jar:9.6",
+    artifact_sha256 = "3c6fac2424db3d4a853b669f4e3d1d9c3c552235e19a319673f887083c2303a1",
     licenses = ["notice"],
     server_urls = _DEFAULT_REPOSITORIES,
 )
 
 jvm_maven_import_external(
     name = "rules_jdt_org_ow2_asm_asm_analysis",
-    artifact = "org.ow2.asm:asm-analysis:jar:9.5",
-    artifact_sha256 = "39f1cf1791335701c3b02cae7b2bc21057ec9a55b2240789cb6d552b2b2c62fa",
+    artifact = "org.ow2.asm:asm-analysis:jar:9.6",
+    artifact_sha256 = "d92832d7c37edc07c60e2559ac6118b31d642e337a6671edcb7ba9fae68edbbb",
     server_urls = _DEFAULT_REPOSITORIES,
     deps = ["@rules_jdt_org_ow2_asm_asm_tree"],
 )
 
 jvm_maven_import_external(
     name = "rules_jdt_org_ow2_asm_asm_commons",
-    artifact = "org.ow2.asm:asm-commons:jar:9.5",
-    artifact_sha256 = "72eee9fbafb9de8d9463f20dd584a48ceeb7e5152ad4c987bfbe17dd4811c9ae",
+    artifact = "org.ow2.asm:asm-commons:jar:9.6",
+    artifact_sha256 = "7aefd0d5c0901701c69f7513feda765fb6be33af2ce7aa17c5781fc87657c511",
     server_urls = _DEFAULT_REPOSITORIES,
     deps = [
         "@rules_jdt_org_ow2_asm_asm",
@@ -182,16 +182,16 @@ jvm_maven_import_external(
 
 jvm_maven_import_external(
     name = "rules_jdt_org_ow2_asm_asm_tree",
-    artifact = "org.ow2.asm:asm-tree:jar:9.5",
-    artifact_sha256 = "3c33a648191079aeaeaeb7c19a49b153952f9e40fe86fbac5205554ddd9acd94",
+    artifact = "org.ow2.asm:asm-tree:jar:9.6",
+    artifact_sha256 = "c43ecf17b539c777e15da7b5b86553b377e2d39a683de6285567d5283888e7ef",
     server_urls = _DEFAULT_REPOSITORIES,
     deps = ["@rules_jdt_org_ow2_asm_asm"],
 )
 
 jvm_maven_import_external(
     name = "rules_jdt_org_ow2_asm_asm_util",
-    artifact = "org.ow2.asm:asm-util:jar:9.5",
-    artifact_sha256 = "c467f1bb3c08888f47243e2d475209b34a772d627e44fca06752e18bb038bd74",
+    artifact = "org.ow2.asm:asm-util:jar:9.6",
+    artifact_sha256 = "c635a7402f4aa9bf66b2f4230cea62025a0fe1cd63e8729adefc9b1994fac4c3",
     server_urls = _DEFAULT_REPOSITORIES,
     deps = [
         "@rules_jdt_org_ow2_asm_asm",

@@ -13,9 +13,11 @@ function abort {
     exit ${2:-1}
 }
 
+ECJ=ecj-4.31RC1.jar
+#ECJ=ecj-4.30.jar
 
-[ -f "ecj-4.30.jar" ] || {
-    abort "please download ecj-4.30.jar into $(pwd)"
+[ -f "$ECJ" ] || {
+    abort "please download $ECJ into $(pwd)"
 }
 
 # JDK 11 as target platform
@@ -77,7 +79,7 @@ remotejdk_21/bin/java --version
 
 [ -f "remotejdk_11/platformclasses.jar" ] || {
     announce "Extracting bootclasspath from remotejdk_11"
-    remotejdk_21/bin/java -jar ecj-4.30.jar -d bin --release 11 src/DumpPlatformClassPath.java
+    remotejdk_21/bin/java -jar $ECJ -d bin --release 11 src/DumpPlatformClassPath.java
     remotejdk_21/bin/java -cp bin DumpPlatformClassPath remotejdk_11/platformclasses.jar remotejdk_11
 }
 
@@ -85,6 +87,6 @@ remotejdk_21/bin/java --version
 announce "remotejdk_21/bin/javac $@"
 remotejdk_21/bin/javac "$@" || warn "javac failed"
 
-announce "remotejdk_21/bin/java -jar ecj-4.30.jar $@"
-remotejdk_21/bin/java -jar ecj-4.30.jar "$@" || warn "ECJ failed"
+announce "remotejdk_21/bin/java -jar $ECJ $@"
+remotejdk_21/bin/java -jar $ECJ "$@" || warn "ECJ failed"
 

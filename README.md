@@ -1,6 +1,12 @@
 # jdt-java-toolchain
-A Java Toolchain for Bazel that uses JDT for compilation.
+A Java Toolchain for Bazel that uses ECJ (Eclipse Compiler for Java) for compilation.
 
+## Why ECJ?
+
+The Eclipse Compiler for Java is much (much, much) faster than javac.
+It's even faster than Bazel's Java header compiler, i.e. with this toolchain you can disable Turbine header compilation and still have a faster build time.
+Additionally, we included a few optimizations to further improve the compilation performance.
+For example, it's possible to disable transitive dependencies and only compile with directly declared dependencies. 
 
 ## Usage
 
@@ -18,7 +24,7 @@ Please create your own `default_java_toolchain` if this doesn't work for your us
 Have a look at `jdt/BUILD` to see which JDKs are supported.
 
 
-## JDT Notes
+## ECJ Notes
 
 Read [ECJ README](compiler/src/main/ecj/README.md) for details about updating JDT.
 

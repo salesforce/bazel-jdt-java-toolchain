@@ -7,5 +7,11 @@ build --extra_toolchains=//:java17_toolchain_with_javax21api_definition
 # disable header compilation (does not work with classpath trick done by 'java17_toolchain_with_javax21api_definition')
 build --nojava_header_compilation
 
+# Point tools such as coursier (used in rules_jvm_external) to Bazel's downloaded JDK
+# suggested in https://github.com/bazelbuild/rules_jvm_external/issues/445
+startup --noautodetect_server_javabase
+common --repo_env=JAVA_HOME=../bazel_tools/jdk
+common --action_env=JAVA_HOME=../bazel_tools/jdk
+
 # create a .bazelrc-local to customize further
 try-import %workspace%/.bazelrc-local

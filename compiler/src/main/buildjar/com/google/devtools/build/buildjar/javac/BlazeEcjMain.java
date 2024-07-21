@@ -418,7 +418,7 @@ public class BlazeEcjMain {
 		// since the JDT compiler is executed from within the sandbox, the absolute path
 		// will be resolved to the working directory
 		// we simple remove the working directory
-		String workDir = System.getProperty("user.dir");
+		String workDir = System.getProperty("user.dir").replace("\\", "/");
 		if (workDir == null)
 			throw new IOException("No working directory returned by JVM for property user.dir!");
 
@@ -432,11 +432,11 @@ public class BlazeEcjMain {
 			first = arguments.sourceFiles().stream().findFirst();
 		}
 
-		String absoluteFilePath = first.get().toAbsolutePath().toString();
+		String absoluteFilePath = first.get().toAbsolutePath().toString().replace("\\", "/");
 		if (!absoluteFilePath.startsWith(workDir)) {
 			String filePath = first.get().toString();
 			throw new IOException(
-					String.format("Unable to confirm working dir '%s' using file '%s' with absolute path '%s'!",
+					String.format("Unable to confirma working dir '%s' using file '%s' with absolute path '%s'!",
 							workDir, filePath, absoluteFilePath));
 		}
 

@@ -18,6 +18,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -125,7 +127,13 @@ public class SimpleJavaLibraryBuilder implements Closeable {
     try {
       result = compileJavaLibrary(build);
       if (result.isOk()) {
-        buildJar(build);
+        StringWriter errOutput = new StringWriter();
+        PrintWriter errWriter = new PrintWriter(errOutput);
+        buildJar(build, errWriter);
+        String output = errOutput.toString().trim();
+        if (output.length() > 0) {
+          result = BlazeJavacResult.createFullResult(result.status(), result.diagnostics(), output, result.statistics());
+        }
         nativeHeaderOutput(build);
       }
       if (!build.getProcessors().isEmpty()) {
@@ -145,7 +153,7 @@ public class SimpleJavaLibraryBuilder implements Closeable {
     return result;
   }
 
-  public void buildJar(JavaLibraryBuildRequest build) throws IOException {
+  public void buildJar(JavaLibraryBuildRequest build, PrintWriter errWriter) throws IOException {
     Files.createDirectories(build.getOutputJar().getParent());
     JarCreator jar = new JarCreator(build.getOutputJar());
     JacocoInstrumentationProcessor processor = null;
@@ -156,7 +164,7 @@ public class SimpleJavaLibraryBuilder implements Closeable {
       jar.setJarOwner(build.getTargetLabel(), build.getInjectingRuleKind());
       processor = build.getJacocoInstrumentationProcessor();
       if (processor != null) {
-        processor.processRequest(build, processor.isNewCoverageImplementation() ? jar : null);
+        processor.processRequest(build, processor.isNewCoverageImplementation() ? jar : null, errWriter);
       }
     } finally {
       jar.execute();

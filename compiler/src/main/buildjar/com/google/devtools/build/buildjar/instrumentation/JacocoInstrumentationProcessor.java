@@ -19,6 +19,7 @@ import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.PrintWriter;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -30,6 +31,7 @@ import java.util.List;
 import org.jacoco.core.instr.Instrumenter;
 import org.jacoco.core.runtime.OfflineInstrumentationAccessGenerator;
 
+import com.google.common.base.Throwables;
 import com.google.common.io.MoreFiles;
 import com.google.common.io.RecursiveDeleteOption;
 import com.google.devtools.build.buildjar.InvalidCommandLineException;
@@ -73,7 +75,7 @@ public final class JacocoInstrumentationProcessor {
    * Instruments classes using Jacoco and keeps copies of uninstrumented class files in
    * jacocoMetadataDir, to be zipped up in the output file jacocoMetadataOutput.
    */
-  public void processRequest(JavaLibraryBuildRequest build, JarCreator jar) throws IOException {
+  public void processRequest(JavaLibraryBuildRequest build, JarCreator jar, PrintWriter errWriter) throws IOException {
     // Use a directory for coverage metadata  that is unique to each built jar. Avoids
     // multiple threads performing read/write/delete actions on the instrumented classes directory.
     instrumentedClassesDirectory = getMetadataDirRelativeToJar(build.getOutputJar());
@@ -84,7 +86,7 @@ public final class JacocoInstrumentationProcessor {
     jar.setNormalize(true);
     jar.setCompression(build.compressJar());
     Instrumenter instr = new Instrumenter(new OfflineInstrumentationAccessGenerator());
-    instrumentRecursively(instr, build.getClassDir());
+    instrumentRecursively(instr, build.getClassDir(), errWriter);
     jar.addDirectory(instrumentedClassesDirectory);
     if (isNewCoverageImplementation) {
       jar.addEntry(coverageInformation, coverageInformation);
@@ -109,7 +111,7 @@ public final class JacocoInstrumentationProcessor {
   /**
    * Runs Jacoco instrumentation processor over all .class files recursively, starting with root.
    */
-  private void instrumentRecursively(Instrumenter instr, Path root) throws IOException {
+  private void instrumentRecursively(Instrumenter instr, Path root, PrintWriter errWriter) throws IOException {
     Files.walkFileTree(
         root,
         new SimpleFileVisitor<Path>() {
@@ -123,24 +125,34 @@ public final class JacocoInstrumentationProcessor {
             // It's not clear whether there is any advantage in not instrumenting *Test classes,
             // apart from lowering the covered percentage in the aggregate statistics.
 
-            // We first move the original .class file to our metadata directory, then instrument it
-            // and output the instrumented version in the regular classes output directory.
-            Path instrumentedCopy = file;
-            Path uninstrumentedCopy;
-            if (isNewCoverageImplementation) {
-              Path absoluteUninstrumentedCopy = Paths.get(file + ".uninstrumented");
-              uninstrumentedCopy =
-                  instrumentedClassesDirectory.resolve(root.relativize(absoluteUninstrumentedCopy));
-            } else {
-              uninstrumentedCopy = instrumentedClassesDirectory.resolve(root.relativize(file));
-            }
-            Files.createDirectories(uninstrumentedCopy.getParent());
-            Files.move(file, uninstrumentedCopy);
-            try (InputStream input =
-                    new BufferedInputStream(Files.newInputStream(uninstrumentedCopy));
-                OutputStream output =
-                    new BufferedOutputStream(Files.newOutputStream(instrumentedCopy))) {
-              instr.instrument(input, output, file.toString());
+            try {
+              // We first move the original .class file to our metadata directory, then instrument
+              // it and output the instrumented version in the regular classes output directory.
+              Path instrumentedCopy = file;
+              Path uninstrumentedCopy;
+              if (isNewCoverageImplementation) {
+                Path absoluteUninstrumentedCopy = Paths.get(file + ".uninstrumented");
+                uninstrumentedCopy =
+                    instrumentedClassesDirectory.resolve(
+                        root.relativize(absoluteUninstrumentedCopy));
+              } else {
+                uninstrumentedCopy = instrumentedClassesDirectory.resolve(root.relativize(file));
+              }
+              Files.createDirectories(uninstrumentedCopy.getParent());
+              Files.move(file, uninstrumentedCopy);
+              try (InputStream input =
+                  new BufferedInputStream(Files.newInputStream(uninstrumentedCopy));
+                  OutputStream output =
+                      new BufferedOutputStream(Files.newOutputStream(instrumentedCopy))) {
+                instr.instrument(input, output, file.toString());
+              } catch (Exception e) {
+                Files.delete(instrumentedCopy);
+                Files.copy(uninstrumentedCopy, instrumentedCopy);
+                throw e;  // Bubble up to the outer broader safety catch block for logging.
+              }
+            } catch (Exception e) {
+              errWriter.printf("WARNING: %s was not instrumented: %s\n", file, Throwables.getRootCause(e).toString());
+              e.printStackTrace();
             }
             return FileVisitResult.CONTINUE;
           }

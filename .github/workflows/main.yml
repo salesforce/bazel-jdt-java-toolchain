@@ -87,6 +87,12 @@ jobs:
         bazelisk build --config=${{ matrix.compiler }} --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }} //...
         bazelisk test --config=${{ matrix.compiler }} --config=debug --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }} //...
       
+    - name: Test Compile with source 11 target 17
+      if: ${{ (matrix.java_versions.language == '11' && matrix.java_versions.runtime == 'remotejdk_17') || (matrix.java_versions.language == '17' && matrix.java_versions.runtime == 'remotejdk_21') }}
+      run: |
+        cd examples/
+        bazelisk build --config=${{ matrix.compiler }}  --extra_toolchains=//source-target-toolchains:all --java_runtime_version=${{ matrix.java_versions.runtime }}  --java_language_version=${{ matrix.java_versions.language }} //java:srcjartest
+      
     - name: Dump Test Logs when failed
       if: ${{ failure() }}
       run: |

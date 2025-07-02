@@ -42,7 +42,6 @@ java_library(
     ],
     deps = [
         ":bazel_org_jacoco_core",
-        ":ecj",
         ":work_request_handlers",
         "//compiler/src/main/protobuf:deps_java_proto",
         "//compiler/src/main/protobuf:java_compilation_java_proto",
@@ -52,23 +51,10 @@ java_library(
         "@maven//:com_github_ben_manes_caffeine_caffeine",
         "@maven//:com_google_guava_guava",
         "@maven//:com_google_code_findbugs_jsr305",
+        "@maven//:org_eclipse_jdt_ecj",
     ],
     plugins = [
         java_plugin_artifact("com.google.auto.value:auto-value", "com.google.auto.value.processor.AutoValueProcessor"),
     ],
 )
 
-# Eclipse Java Compiler
-java_library(
-    name = "ecj",
-    srcs = glob(["src/main/ecj/**/*.java"]),
-    javacopts = [
-        "-nowarn",
-        "-XepDisableAllChecks",
-    ],
-    resource_strip_prefix = "compiler/src/main/ecj/",
-    resources = glob(
-        ["src/main/ecj/**"],
-        exclude = ["**/*.java"],
-    ),
-)

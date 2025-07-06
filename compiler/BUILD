@@ -1,4 +1,5 @@
 load("@rules_java//java:defs.bzl", "java_library")
+load("@rules_jvm_external//:defs.bzl", "java_plugin_artifact")
 
 # Bazel's Worker
 java_library(
@@ -6,9 +7,9 @@ java_library(
     srcs = glob(["src/main/worker/**/*.java"]),
     deps = [
         "//compiler/src/main/protobuf:worker_protocol_java_proto",
-        "@com_google_protobuf//:protobuf_java",
-        "@com_google_protobuf//:protobuf_java_util",
-        "@rules_jdt_guava",
+        "@protobuf//:protobuf_java",
+        "@protobuf//:protobuf_java_util",
+        "@maven//:com_google_guava_guava",
     ],
 )
 
@@ -33,38 +34,27 @@ java_library(
     ],
     visibility = ["//:__subpackages__"],
     runtime_deps = [
-        "@rules_jdt_org_ow2_asm_asm",
-        "@rules_jdt_org_ow2_asm_asm_analysis",
-        "@rules_jdt_org_ow2_asm_asm_commons",
-        "@rules_jdt_org_ow2_asm_asm_tree",
-        "@rules_jdt_org_ow2_asm_asm_util",
+        "@maven//:org_ow2_asm_asm",
+        "@maven//:org_ow2_asm_asm_analysis",
+        "@maven//:org_ow2_asm_asm_commons",
+        "@maven//:org_ow2_asm_asm_tree",
+        "@maven//:org_ow2_asm_asm_util",
     ],
     deps = [
         ":bazel_org_jacoco_core",
-        ":ecj",
         ":work_request_handlers",
         "//compiler/src/main/protobuf:deps_java_proto",
         "//compiler/src/main/protobuf:java_compilation_java_proto",
         "//compiler/src/main/protobuf:worker_protocol_java_proto",
-        "//compiler/third_party/auto_value:processor",
-        "@com_google_protobuf//:protobuf_java",
-        "@rules_jdt_caffeine",
-        "@rules_jdt_guava",
-        "@rules_jdt_jsr305",
+        "@protobuf//:protobuf_java",
+        "@maven//:com_google_auto_value_auto_value_annotations",
+        "@maven//:com_github_ben_manes_caffeine_caffeine",
+        "@maven//:com_google_guava_guava",
+        "@maven//:com_google_code_findbugs_jsr305",
+        "@maven//:org_eclipse_jdt_ecj",
+    ],
+    plugins = [
+        java_plugin_artifact("com.google.auto.value:auto-value", "com.google.auto.value.processor.AutoValueProcessor"),
     ],
 )
 
-# Eclipse Java Compiler
-java_library(
-    name = "ecj",
-    srcs = glob(["src/main/ecj/**/*.java"]),
-    javacopts = [
-        "-nowarn",
-        "-XepDisableAllChecks",
-    ],
-    resource_strip_prefix = "compiler/src/main/ecj/",
-    resources = glob(
-        ["src/main/ecj/**"],
-        exclude = ["**/*.java"],
-    ),
-)

@@ -1,6 +1,99 @@
-###############################################################################
-# Bazel now uses Bzlmod by default to manage external dependencies.
-# Please consider migrating your external dependencies from WORKSPACE to MODULE.bazel.
+"""Bazel Java Toolchain for Eclipse Java Compiler (ECJ)."""
+
+module(
+    name = "rules_jdt_java_toolchain",
+    version = "1.4.0", # must match the version in dist/BUILD
+)
+
+bazel_dep(name = "rules_java", version = "8.13.0")
+
+bazel_dep(name = "bazel_skylib", version = "1.8.0", dev_dependency = True)
+
+### Google Protobuf dependencies (rules_proto is no longer needed)
+bazel_dep(name = "protobuf", version = "31.1", dev_dependency = True)
+
+### Maven dependencies for the Java toolchain
 #
-# For more details, please check https://github.com/bazelbuild/bazel/issues/18958
-###############################################################################
+# re-pin with:
+#    REPIN=1 bazel run @maven//:pin
+#
+# show outdated with:
+#    bazel run @maven//:outdated
+#
+#
+bazel_dep(name = "rules_jvm_external", version = "6.7", dev_dependency = True)
+
+maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
+maven.install(
+    artifacts = [
+        "com.google.guava:guava:33.4.8-jre",
+        "com.google.auto.value:auto-value:1.11.0",
+        "com.google.auto.value:auto-value-annotations:1.11.0",
+        "com.google.code.findbugs:jsr305:3.0.2",
+        "com.github.ben-manes.caffeine:caffeine:3.2.1",
+        "org.eclipse.jdt:ecj:3.42.0",
+        # ASM (needed for coverage together with Jacoco)
+        "org.ow2.asm:asm:9.7.1",
+        "org.ow2.asm:asm-analysis:9.7.1",
+        "org.ow2.asm:asm-commons:9.7.1",
+        "org.ow2.asm:asm-tree:9.7.1",
+        "org.ow2.asm:asm-util:9.7.1",
+    ],
+    fail_if_repin_required = True,
+    lock_file = "//compiler/third_party/maven:maven_install.json",
+    resolver = "maven",
+    strict_visibility = True,
+)
+use_repo(maven, "maven")
+
+# Bazel's JaCoCo & ASM dependencies
+#
+# In the past Bazel patched something or relied on SNAPSHOT versions. Therefore
+# we fetch directly from Bazel's repository.
+#
+# Note, JaCoCo AND ASM versions must match the ones Bazel uses.
+# Thus, also make sure ASM version above in `maven.install` matches the one for Bazel's.
+# This tightly couples the Bazel version to the ECJ Toolchain version. This is bad, but
+# unaboidable for now. Bazel adds these dependencies to the runtime classpath.
+# If the jars are out of sync this error will be reported: NoClassDefFoundError: org/jacoco/agent/rt/internal_{commit-hash}/Offline
+#
+# Get the matching bazel jacoco jars from https://github.com/bazelbuild/bazel/tree/master/third_party/java/jacoco
+#
+http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_file")
+
+http_archive(
+    name = "bazel_org_jacoco_core_jar",
+    downloaded_file_path = "org.jacoco.core.jar",
+    sha256 = "fcd188c688473fc8dcc0c6caaf355e7b389502243527c33b9597a3ec28791f47",
+    urls = [
+        "https://github.com/bazelbuild/bazel/raw/ad8ea5aed2c97c4dbbe577fb69adbd51746f6a51/third_party/java/jacoco/org.jacoco.core-0.8.11.jar",
+    ],
+)
+
+http_archive(
+    name = "bazel_org_jacoco_core_srcjar",
+    downloaded_file_path = "org.jacoco.core-sources.jar",
+    sha256 = "6856d98a837c669f33284df0104130000b12eaf38f04374c6d753eb03c65d93a",
+    urls = [
+        "https://github.com/bazelbuild/bazel/raw/ad8ea5aed2c97c4dbbe577fb69adbd51746f6a51/third_party/java/jacoco/org.jacoco.core-0.8.11-sources.jar",
+    ],
+)
+
+### Rules PKG for building deployable packages
+bazel_dep(name = "rules_pkg", version = "1.1.0", dev_dependency = True)
+git_override(
+    module_name = "rules_pkg",
+    # git_override to consume parts of https://github.com/bazelbuild/rules_pkg/pull/967
+    commit = "7b0dfc482b254a20b94d2a5786a26fe133ae3514",
+    remote = "https://github.com/guw/rules_pkg.git",
+)
+
+# Needed for making our release notes the rules_pkg way
+find_git = use_extension("@rules_pkg//toolchains/git:git_configure.bzl", "experimental_find_system_git_extension", dev_dependency = True)
+use_repo(find_git, "rules_pkg_git")
+
+register_toolchains(
+    "@rules_pkg_git//:git_auto_toolchain",
+    "@rules_pkg//toolchains/git:git_missing_toolchain",
+    dev_dependency = True,
+)

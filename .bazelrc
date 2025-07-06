@@ -1,4 +1,4 @@
-# JDK 11
+# JDK 17
 build --java_language_version=17
 
 # use a custom toolchain to produce 17 output with 21 api
@@ -6,6 +6,9 @@ build --extra_toolchains=//:java17_toolchain_with_javax21api_definition
 
 # disable header compilation (does not work with classpath trick done by 'java17_toolchain_with_javax21api_definition')
 build --nojava_header_compilation
+
+# fail if lockfile is out of date in CI
+build:ci --lockfile_mode=error
 
 # create a .bazelrc-local to customize further
 try-import %workspace%/.bazelrc-local

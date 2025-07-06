@@ -32,7 +32,7 @@ jobs:
 
     - name: Build JdtJavaBuilder_deploy.jar
       run: |
-        bazelisk build :JdtJavaBuilder_deploy.jar
+        bazelisk build --config=ci :JdtJavaBuilder_deploy.jar
         cp -fv bazel-bin/JdtJavaBuilder_deploy.jar compiler/export/
 
   test:
